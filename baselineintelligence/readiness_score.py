@@ -70,27 +70,41 @@ print(f"Status        : {readiness}")
 # Generate unique run id
 run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Optionally use BUILD_ID or VERSION environment variables to identify the build/version
-# This allows the script to enforce a single readiness record per build/version/run.
-build_id = os.getenv("BUILD_ID") or os.getenv("VERSION") or None
+# CLI: accept optional --build-id to allow explicit CI-provided identifier
+import argparse
+parser = argparse.ArgumentParser(description="Compute and store release readiness")
+parser.add_argument("--build-id", dest="build_id", help="Build identifier (overrides BUILD_ID env var)")
+args = parser.parse_args()
 
-# Use build_id for deduplication when available, otherwise fall back to run_id
+# Gather build identifiers from CLI or environment (Jenkins provides BUILD_ID, BUILD_NUMBER, JOB_NAME)
+build_id = args.build_id or os.getenv("BUILD_ID") or os.getenv("VERSION") or None
+build_number = os.getenv("BUILD_NUMBER")
+job_name = os.getenv("JOB_NAME")
+
+# Use build_id for deduplication when available; otherwise try JOB_NAME+BUILD_NUMBER; fallback to run_id
 if build_id:
-    identifier_key = "build_id"
-    identifier_value = build_id
+    dedupe_mode = "build_id"
+    identifier_expr = ("build_id", build_id)
+elif job_name and build_number:
+    dedupe_mode = "job_build"
+    identifier_expr = ("job_name_build", f"{job_name}:{build_number}")
 else:
-    identifier_key = "run_id"
-    identifier_value = run_id
+    dedupe_mode = "run_id"
+    identifier_expr = ("run_id", run_id)
 
-# Prepare tags (include both for traceability)
+# Prepare tags (include available CI info for traceability)
 tags = {
     "application": "AiPERF",
     "run_id": run_id
 }
 if build_id:
     tags["build_id"] = build_id
+if build_number:
+    tags["build_number"] = build_number
+if job_name:
+    tags["job_name"] = job_name
 
-# Store result in InfluxDB
+# Store result body
 json_body = [
     {
         "measurement": "aiperf_release_readiness",
@@ -104,10 +118,24 @@ json_body = [
     }
 ]
 
-# Ensure only one record exists per identifier (build_id OR run_id): delete existing records with the same identifier before writing
+# Build deduplication WHERE clause depending on mode
+def dedupe_where_clause():
+    mode, val = identifier_expr
+    if mode == "build_id":
+        return f'"build_id" = \'{val}\''
+    elif mode == "job_build":
+        # split composite
+        job, num = val.split(":", 1)
+        return f'"job_name" = \'{job}\' AND "build_number" = \'{num}\''
+    else:
+        return f'"run_id" = \'{val}\''
+
+where_clause = dedupe_where_clause()
+
+# Ensure only one record exists per identifier: delete existing records with the same identifier before writing
 try:
-    query = f"SELECT COUNT(release_score) as count FROM \"aiperf_release_readiness\" WHERE \"{identifier_key}\" = '{identifier_value}'"
-    existing = client.query(query)
+    count_query = f"SELECT COUNT(release_score) as count FROM \"aiperf_release_readiness\" WHERE {where_clause}"
+    existing = client.query(count_query)
     count = 0
     for measurement, points in existing.items():
         for row in points:
@@ -118,11 +146,12 @@ try:
                 except Exception:
                     continue
     if count and count > 0:
-        logger.info(f"Found {count} existing readiness record(s) for {identifier_key}={identifier_value}, deleting before write")
-        client.query(f"DELETE FROM \"aiperf_release_readiness\" WHERE \"{identifier_key}\" = '{identifier_value}'")
+        logger.info(f"Found {count} existing readiness record(s) for {identifier_expr}, deleting before write")
+        client.query(f"DELETE FROM \"aiperf_release_readiness\" WHERE {where_clause}")
 except Exception as e:
-    logger.warning(f"Could not check/delete existing readiness records for {identifier_key}={identifier_value}: {e}")
+    logger.warning(f"Could not check/delete existing readiness records for {identifier_expr}: {e}")
 
+# Write the new readiness record
 try:
     client.write_points(json_body)
     logger.info("Stored release readiness in InfluxDB")
@@ -130,6 +159,9 @@ try:
     print(f"Run ID : {run_id}")
     if build_id:
         print(f"Build ID : {build_id}")
+    if job_name and build_number:
+        print(f"Jenkins Job : {job_name}#{build_number}")
+    print(f"Deduplication mode: {dedupe_mode}")
 except Exception as e:
     logger.error(f"Failed to write readiness to InfluxDB: {e}")
     print(f"\nFailed to store readiness: {e}")
