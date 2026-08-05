@@ -74,6 +74,8 @@ run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 import argparse
 parser = argparse.ArgumentParser(description="Compute and store release readiness")
 parser.add_argument("--build-id", dest="build_id", help="Build identifier (overrides BUILD_ID env var)")
+parser.add_argument("--dry-run", dest="dry_run", action="store_true", help="Do not delete or write; only print what would be done")
+parser.add_argument("--jenkins-snippet", dest="jenkins_snippet", action="store_true", help="Print a recommended Jenkins pipeline snippet for invoking this script")
 args = parser.parse_args()
 
 # Gather build identifiers from CLI or environment (Jenkins provides BUILD_ID, BUILD_NUMBER, JOB_NAME)
@@ -132,6 +134,30 @@ def dedupe_where_clause():
 
 where_clause = dedupe_where_clause()
 
+# If requested, print a Jenkins snippet and exit
+if args.jenkins_snippet:
+    snippet = f"""
+Recommended Jenkins usage examples:
+
+Shell (Linux/Mac):
+  python readiness_score.py --build-id "$BUILD_TAG"
+
+Windows batch / PowerShell:
+  python readiness_score.py --build-id "%BUILD_TAG%"
+
+Declarative Pipeline (example):
+stage('Compute Readiness') {
+  steps {
+    sh '''
+    python readiness_score.py --build-id "$BUILD_TAG"
+    '''
+  }
+}
+
+This script will also pick up BUILD_NUMBER and JOB_NAME automatically when run inside Jenkins.
+"""
+    print(snippet)
+
 # Ensure only one record exists per identifier: delete existing records with the same identifier before writing
 try:
     count_query = f"SELECT COUNT(release_score) as count FROM \"aiperf_release_readiness\" WHERE {where_clause}"
@@ -146,22 +172,28 @@ try:
                 except Exception:
                     continue
     if count and count > 0:
-        logger.info(f"Found {count} existing readiness record(s) for {identifier_expr}, deleting before write")
-        client.query(f"DELETE FROM \"aiperf_release_readiness\" WHERE {where_clause}")
+        logger.info(f"Found {count} existing readiness record(s) for {identifier_expr}{' (dry-run)' if args.dry_run else ''}, {'would delete' if args.dry_run else 'deleting'} before write")
+        if not args.dry_run:
+            client.query(f"DELETE FROM \"aiperf_release_readiness\" WHERE {where_clause}")
 except Exception as e:
     logger.warning(f"Could not check/delete existing readiness records for {identifier_expr}: {e}")
 
-# Write the new readiness record
-try:
-    client.write_points(json_body)
-    logger.info("Stored release readiness in InfluxDB")
-    print(f"\nStored in InfluxDB")
-    print(f"Run ID : {run_id}")
-    if build_id:
-        print(f"Build ID : {build_id}")
-    if job_name and build_number:
-        print(f"Jenkins Job : {job_name}#{build_number}")
+# Write the new readiness record (unless dry-run)
+if args.dry_run:
+    logger.info("Dry run enabled - not writing to InfluxDB. The following point would be written:")
+    print(json_body)
     print(f"Deduplication mode: {dedupe_mode}")
-except Exception as e:
-    logger.error(f"Failed to write readiness to InfluxDB: {e}")
-    print(f"\nFailed to store readiness: {e}")
+else:
+    try:
+        client.write_points(json_body)
+        logger.info("Stored release readiness in InfluxDB")
+        print(f"\nStored in InfluxDB")
+        print(f"Run ID : {run_id}")
+        if build_id:
+            print(f"Build ID : {build_id}")
+        if job_name and build_number:
+            print(f"Jenkins Job : {job_name}#{build_number}")
+        print(f"Deduplication mode: {dedupe_mode}")
+    except Exception as e:
+        logger.error(f"Failed to write readiness to InfluxDB: {e}")
+        print(f"\nFailed to store readiness: {e}")
