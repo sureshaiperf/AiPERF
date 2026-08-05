@@ -1,0 +1,49 @@
+from influxdb import InfluxDBClient
+
+print("===== AiPERF Capacity Intelligence =====")
+
+client = InfluxDBClient(
+    host='localhost',
+    port=8086,
+    database='jmeter'
+)
+
+query = """
+SELECT LAST("count") AS txn_count,
+       LAST("pct95.0") AS p95
+FROM "jmeter"
+GROUP BY "transaction"
+"""
+
+result = client.query(query)
+
+for measurement, points in result.items():
+
+    transaction = measurement[1].get("transaction")
+
+    for row in points:
+
+        current_count = row["txn_count"]
+        current_p95 = row["p95"]
+
+        # Simple capacity estimation
+        predicted_capacity = current_count * 2.5
+        headroom = (
+            (predicted_capacity - current_count)
+            / predicted_capacity
+        ) * 100
+
+        if headroom > 50:
+            risk = "LOW"
+        elif headroom > 25:
+            risk = "MEDIUM"
+        else:
+            risk = "HIGH"
+
+        print("\n---------------------------------")
+        print(f"Transaction        : {transaction}")
+        print(f"Current Load       : {current_count}")
+        print(f"P95 Response Time  : {current_p95:.2f} ms")
+        print(f"Pred Capacity      : {predicted_capacity:.2f}")
+        print(f"Headroom %         : {headroom:.2f}")
+        print(f"Risk               : {risk}")
