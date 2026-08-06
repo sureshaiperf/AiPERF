@@ -1,4 +1,3 @@
-from influxdb import InfluxDBClient
 from datetime import datetime
 import logging
 import os
@@ -6,12 +5,20 @@ import os
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Connect to InfluxDB
-client = InfluxDBClient(
-    host='localhost',
-    port=8086,
-    database='jmeter'
-)
+
+def get_influx_client(host=None, port=None, database=None):
+    """Lazily import and create an InfluxDB client."""
+    try:
+        from influxdb import InfluxDBClient
+    except ImportError as exc:
+        logger.error("The influxdb package is required to connect to InfluxDB.")
+        raise
+
+    host = host or 'localhost'
+    port = int(port or 8086)
+    database = database or 'jmeter'
+    return InfluxDBClient(host=host, port=port, database=database)
+
 
 def run_readiness(client=None, args=None, env=None):
     """Compute and store release readiness. Allows injecting a mock InfluxDB client and args for testing.
@@ -23,7 +30,14 @@ def run_readiness(client=None, args=None, env=None):
         env = os.environ
 
     # Use the provided client or create a default one
-    local_client = client if client is not None else InfluxDBClient(host='localhost', port=8086, database='jmeter')
+    if client is not None:
+        local_client = client
+    else:
+        local_client = get_influx_client(
+            host=env.get('INFLUX_HOST', 'localhost'),
+            port=env.get('INFLUX_PORT', 8086),
+            database=env.get('INFLUX_DB', 'jmeter')
+        )
 
     # Read latest baseline analysis results
     query = """
