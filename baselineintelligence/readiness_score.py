@@ -153,7 +153,7 @@ GROUP BY "transaction","status"
 
     # If requested, print a Jenkins snippet and exit
     if args.jenkins_snippet:
-        snippet = f"""
+        snippet = """
 Recommended Jenkins usage examples:
 
 Shell (Linux/Mac):

@@ -15,7 +15,7 @@ class TestReadinessOverwrite(unittest.TestCase):
             if 'aiperf_analysis' in q:
                 return {}
             if 'aiperf_release_readiness' in q and 'ORDER BY time' in q:
-                return {('aiperf_release_readiness', {}): [{'time': '2026-01-01T00:00:00Z'}]}
+                return {'aiperf_release_readiness': [{'time': '2026-01-01T00:00:00Z'}]}
             return {}
 
         mock_client.query.side_effect = query_side_effect
