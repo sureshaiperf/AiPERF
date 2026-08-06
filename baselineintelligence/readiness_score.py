@@ -140,17 +140,20 @@ if args.jenkins_snippet:
 Recommended Jenkins usage examples:
 
 Shell (Linux/Mac):
-  python readiness_score.py --build-id "$BUILD_TAG"
+  python baselineintelligence/readiness_score.py --build-id "$BUILD_TAG"
 
 Windows batch / PowerShell:
-  python readiness_score.py --build-id "%BUILD_TAG%"
+  python baselineintelligence/readiness_score.py --build-id "%BUILD_TAG%"
 
 Declarative Pipeline (example):
-stage('Compute Readiness') {
-  steps {
-    sh '''
-    python readiness_score.py --build-id "$BUILD_TAG"
-    '''
+pipeline {
+  agent any
+  stages {
+    stage('Compute Readiness') {
+      steps {
+        sh 'python baselineintelligence/readiness_score.py --build-id "$BUILD_TAG"'
+      }
+    }
   }
 }
 
@@ -158,35 +161,47 @@ This script will also pick up BUILD_NUMBER and JOB_NAME automatically when run i
 """
     print(snippet)
 
-# Ensure only one record exists per identifier: delete existing records with the same identifier before writing
+# Overwrite-by-timestamp approach: if an existing point for the same identifier exists, write using its timestamp so InfluxDB updates the point (preserving history semantics differently)
+existing_point_time = None
 try:
-    count_query = f"SELECT COUNT(release_score) as count FROM \"aiperf_release_readiness\" WHERE {where_clause}"
-    existing = client.query(count_query)
-    count = 0
-    for measurement, points in existing.items():
+    # Query the most recent point for this identifier
+    latest_query = f"SELECT * FROM \"aiperf_release_readiness\" WHERE {where_clause} ORDER BY time DESC LIMIT 1"
+    latest = client.query(latest_query)
+    for measurement, points in latest.items():
         for row in points:
-            for v in row.values():
-                try:
-                    count = int(v)
-                    break
-                except Exception:
-                    continue
-    if count and count > 0:
-        logger.info(f"Found {count} existing readiness record(s) for {identifier_expr}{' (dry-run)' if args.dry_run else ''}, {'would delete' if args.dry_run else 'deleting'} before write")
-        if not args.dry_run:
-            client.query(f"DELETE FROM \"aiperf_release_readiness\" WHERE {where_clause}")
+            # InfluxDB returns 'time' for points
+            t = row.get('time')
+            if t:
+                existing_point_time = t
+                break
+        if existing_point_time:
+            break
 except Exception as e:
-    logger.warning(f"Could not check/delete existing readiness records for {identifier_expr}: {e}")
+    logger.warning(f"Could not fetch existing readiness point for {identifier_expr}: {e}")
 
-# Write the new readiness record (unless dry-run)
 if args.dry_run:
     logger.info("Dry run enabled - not writing to InfluxDB. The following point would be written:")
-    print(json_body)
+    if existing_point_time:
+        print(f"Would overwrite existing point at time: {existing_point_time} (identifier={identifier_expr})")
+        # show the point with the time that would be used
+        sample = json_body.copy()
+        sample[0] = sample[0].copy()
+        sample[0]['time'] = existing_point_time
+        print(sample)
+    else:
+        print(json_body)
     print(f"Deduplication mode: {dedupe_mode}")
 else:
     try:
+        if existing_point_time:
+            # Overwrite by writing the point with the same timestamp as the existing point
+            json_body[0]['time'] = existing_point_time
+            logger.info(f"Overwriting existing readiness point at time {existing_point_time} for {identifier_expr}")
+        else:
+            logger.info(f"No existing readiness point found for {identifier_expr}; writing a new point")
+
         client.write_points(json_body)
-        logger.info("Stored release readiness in InfluxDB")
+        logger.info("Stored release readiness in InfluxDB (overwrite-by-timestamp)")
         print(f"\nStored in InfluxDB")
         print(f"Run ID : {run_id}")
         if build_id:

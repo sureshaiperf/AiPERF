@@ -1,0 +1,42 @@
+/*
+Example Jenkinsfile to run AiPERF readiness_score.py as part of a pipeline.
+
+This demonstrates how to pass a stable build identifier (BUILD_TAG) and how to invoke the script
+so it records release readiness and deduplicates records in InfluxDB.
+*/
+
+pipeline {
+  agent any
+
+  environment {
+    // Jenkins provides BUILD_TAG, BUILD_NUMBER, JOB_NAME automatically
+    // Optionally set a custom BUILD_ID if required
+    // BUILD_ID = "${env.BUILD_TAG}"
+  }
+
+  stages {
+    stage('Run JMeter') {
+      steps {
+        // Example: run your JMeter tests here and generate metrics into InfluxDB
+        echo 'Running JMeter tests (not implemented in this example)'
+      }
+    }
+
+    stage('Compute Readiness') {
+      steps {
+        // Recommended: pass a stable BUILD_ID (BUILD_TAG or GIT_COMMIT) to ensure deduplication
+        // Linux / Mac
+        sh 'python baselineintelligence/readiness_score.py --build-id "$BUILD_TAG"'
+
+        // Windows (batch)
+        // bat 'python baselineintelligence\readiness_score.py --build-id "%BUILD_TAG%"'
+      }
+    }
+  }
+
+  post {
+    always {
+      echo 'Pipeline finished'
+    }
+  }
+}
