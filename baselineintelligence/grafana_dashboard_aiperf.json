@@ -1,475 +1,118 @@
 {
-"dashboard": {
-"id": null,
-"uid": null,
-"title": "AiPERF Forecast & Trends",
-"timezone": "browser",
-"schemaVersion": 36,
-"version": 1,
-"refresh": "30s",
-"panels": [
-{
-"type": "graph",
-"title": "p95 - GET Posts API (actual + forecast + band)",
-"id": 1,
-"datasource": "Aiperf InfluxDB",
-"targets": [
-{
-"refId": "A",
-"query": "SELECT percentile("duration_ms",95) AS "actual_p95" FROM "jmeter" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-A
-N
-D
-t
-¨
-r
-a
-n
-s
-a
-c
-t
-i
-o
-n
-=
-¨
-′
-G
-E
-T
-P
-o
-s
-t
-s
-A
-P
-I
-′
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterAND 
-t
-¨
- ransaction 
-=
-¨
-  
-′
- GETPostsAPI 
-′
- GROUPBYtime(__interval) fill(null)"
-},
-{
-"refId": "B",
-"query": "SELECT "value" FROM "aiperf_forecast" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-A
-N
-D
-m
-¨
-e
-t
-r
-i
-c
-=
-¨
-′
-p
-95
-′
-A
-N
-D
-t
-¨
-r
-a
-n
-s
-a
-c
-t
-i
-o
-n
-=
-¨
-′
-G
-E
-T
-P
-o
-s
-t
-s
-A
-P
-I
-′
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterAND 
-m
-¨
- etric 
-=
-¨
-  
-′
- p95 
-′
- AND 
-t
-¨
- ransaction 
-=
-¨
-  
-′
- GETPostsAPI 
-′
- GROUPBYtime(__interval) fill(null)"
-},
-{
-"refId": "C",
-"query": "SELECT "upper" FROM "aiperf_forecast" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-A
-N
-D
-m
-¨
-e
-t
-r
-i
-c
-=
-¨
-′
-p
-95
-′
-A
-N
-D
-t
-¨
-r
-a
-n
-s
-a
-c
-t
-i
-o
-n
-=
-¨
-′
-G
-E
-T
-P
-o
-s
-t
-s
-A
-P
-I
-′
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterAND 
-m
-¨
- etric 
-=
-¨
-  
-′
- p95 
-′
- AND 
-t
-¨
- ransaction 
-=
-¨
-  
-′
- GETPostsAPI 
-′
- GROUPBYtime(__interval) fill(null)"
-},
-{
-"refId": "D",
-"query": "SELECT "lower" FROM "aiperf_forecast" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-A
-N
-D
-m
-¨
-e
-t
-r
-i
-c
-=
-¨
-′
-p
-95
-′
-A
-N
-D
-t
-¨
-r
-a
-n
-s
-a
-c
-t
-i
-o
-n
-=
-¨
-′
-G
-E
-T
-P
-o
-s
-t
-s
-A
-P
-I
-′
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterAND 
-m
-¨
- etric 
-=
-¨
-  
-′
- p95 
-′
- AND 
-t
-¨
- ransaction 
-=
-¨
-  
-′
- GETPostsAPI 
-′
- GROUPBYtime(__interval) fill(null)"
-}
-],
-"lines": true,
-"linewidth": 2,
-"fill": 1,
-"stack": false
-},
-{
-"type": "table",
-"title": "aiperf_alerts (recent)",
-"id": 2,
-"datasource": "Aiperf InfluxDB",
-"targets": [
-{
-"refId": "A",
-"query": "SELECT "message", "severity", "value", "expected_lower", "expected_upper" FROM "aiperf_alerts" WHERE $timeFilter ORDER BY time DESC LIMIT 100"
-}
-]
-},
-{
-"type": "graph",
-"title": "p95 - all transactions (compare)",
-"id": 3,
-"datasource": "Aiperf InfluxDB",
-"targets": [
-{
-"refId": "A",
-"query": "SELECT percentile("duration_ms",95) AS "p95" FROM "jmeter" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterGROUPBYtime(__interval), "transaction" fill(null)"
-},
-{
-"refId": "B",
-"query": "SELECT "value" FROM "aiperf_forecast" WHERE 
-t
-i
-m
-e
-F
-i
-l
-t
-e
-r
-A
-N
-D
-m
-¨
-e
-t
-r
-i
-c
-=
-¨
-′
-p
-95
-′
-G
-R
-O
-U
-P
-B
-Y
-t
-i
-m
-e
-(
-timeFilterAND 
-m
-¨
- etric 
-=
-¨
-  
-′
- p95 
-′
- GROUPBYtime(__interval), "transaction" fill(null)"
-}
-],
-"lines": true,
-"linewidth": 1,
-"fill": 0
-}
-]
-},
-"overwrite": false
+  "dashboard": {
+    "id": null,
+    "uid": null,
+    "title": "AiPERF Forecast & Trends",
+    "timezone": "browser",
+    "schemaVersion": 36,
+    "version": 1,
+    "refresh": "30s",
+    "templating": {
+      "list": [
+        {
+          "type": "datasource",
+          "name": "DS",
+          "label": "Data source",
+          "query": "",
+          "current": { "text": "Aiperf InfluxDB", "value": "Aiperf InfluxDB" }
+        },
+        {
+          "type": "query",
+          "name": "transaction",
+          "label": "Transaction",
+          "datasource": null,
+          "query": "SHOW TAG VALUES FROM \"jmeter\" WITH KEY = \"transaction\"",
+          "current": { "text": "GET Posts API", "value": "GET Posts API" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "type": "graph",
+        "title": "p95 - GET Posts API (actual + forecast + band)",
+        "id": 1,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT percentile(\"duration_ms\",95) AS \"actual_p95\" FROM \"jmeter\" WHERE $timeFilter AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "B", "query": "SELECT \"value\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\"='p95' AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "C", "query": "SELECT \"upper\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\"='p95' AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "D", "query": "SELECT \"lower\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\"='p95' AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" }
+        ],
+        "lines": true,
+        "linewidth": 2,
+        "fill": 1
+      },
+      {
+        "type": "graph",
+        "title": "avg / p90 / p99 - GET Posts API (actual + forecast)",
+        "id": 4,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT mean(\"duration_ms\") AS \"avg\" FROM \"jmeter\" WHERE $timeFilter AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "B", "query": "SELECT percentile(\"duration_ms\",90) AS \"p90\" FROM \"jmeter\" WHERE $timeFilter AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "C", "query": "SELECT percentile(\"duration_ms\",99) AS \"p99\" FROM \"jmeter\" WHERE $timeFilter AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "D", "query": "SELECT \"value\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\" IN ('avg','p90','p99') AND \"transaction\"='GET Posts API' GROUP BY time($__interval), \"metric\" fill(null)" }
+        ],
+        "lines": true,
+        "linewidth": 1,
+        "fill": 0
+      },
+      {
+        "type": "graph",
+        "title": "Error% - GET Posts API (actual + forecast)",
+        "id": 5,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT mean(\"error_pct\") AS \"error_pct\" FROM \"jmeter\" WHERE $timeFilter AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" },
+          { "refId": "B", "query": "SELECT \"value\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\"='error_pct' AND \"transaction\"='GET Posts API' GROUP BY time($__interval) fill(null)" }
+        ],
+        "lines": true,
+        "linewidth": 1,
+        "fill": 0
+      },
+      {
+        "type": "table",
+        "title": "aiperf_alerts (CRITICAL)",
+        "id": 2,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT \"message\", \"severity\", \"value\", \"expected_lower\", \"expected_upper\" FROM \"aiperf_alerts\" WHERE $timeFilter AND \"severity\"='CRITICAL' ORDER BY time DESC LIMIT 200" }
+        ]
+      },
+      {
+        "type": "table",
+        "title": "Transactions by Severity (aiperf_trend_analysis)",
+        "id": 6,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT \"trend_pct\", \"slope_per_day\", \"r2\" FROM \"aiperf_trend_analysis\" WHERE $timeFilter GROUP BY \"transaction\" ORDER BY \"trend_pct\" DESC LIMIT 500" }
+        ],
+        "transform": "timeseries_to_rows"
+      },
+      {
+        "type": "heatmap",
+        "title": "Trend severity heatmap (last 30 days)",
+        "id": 7,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT \"trend_pct\" FROM \"aiperf_trend_analysis\" WHERE $timeFilter" }
+        ],
+        "color": { "mode": "spectrum" }
+      },
+      {
+        "type": "graph",
+        "title": "p95 - all transactions (compare)",
+        "id": 3,
+        "datasource": "Aiperf InfluxDB",
+        "targets": [
+          { "refId": "A", "query": "SELECT percentile(\"duration_ms\",95) AS \"p95\" FROM \"jmeter\" WHERE $timeFilter GROUP BY time($__interval), \"transaction\" fill(null)" },
+          { "refId": "B", "query": "SELECT \"value\" FROM \"aiperf_forecast\" WHERE $timeFilter AND \"metric\"='p95' GROUP BY time($__interval), \"transaction\" fill(null)" }
+        ],
+        "lines": true,
+        "linewidth": 1,
+        "fill": 0
+      }
+    ]
+  },
+  "overwrite": true
 }
