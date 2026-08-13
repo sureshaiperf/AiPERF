@@ -1,0 +1,475 @@
+{
+"dashboard": {
+"id": null,
+"uid": null,
+"title": "AiPERF Forecast & Trends",
+"timezone": "browser",
+"schemaVersion": 36,
+"version": 1,
+"refresh": "30s",
+"panels": [
+{
+"type": "graph",
+"title": "p95 - GET Posts API (actual + forecast + band)",
+"id": 1,
+"datasource": "Aiperf InfluxDB",
+"targets": [
+{
+"refId": "A",
+"query": "SELECT percentile("duration_ms",95) AS "actual_p95" FROM "jmeter" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+A
+N
+D
+t
+¨
+r
+a
+n
+s
+a
+c
+t
+i
+o
+n
+=
+¨
+′
+G
+E
+T
+P
+o
+s
+t
+s
+A
+P
+I
+′
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterAND 
+t
+¨
+ ransaction 
+=
+¨
+  
+′
+ GETPostsAPI 
+′
+ GROUPBYtime(__interval) fill(null)"
+},
+{
+"refId": "B",
+"query": "SELECT "value" FROM "aiperf_forecast" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+A
+N
+D
+m
+¨
+e
+t
+r
+i
+c
+=
+¨
+′
+p
+95
+′
+A
+N
+D
+t
+¨
+r
+a
+n
+s
+a
+c
+t
+i
+o
+n
+=
+¨
+′
+G
+E
+T
+P
+o
+s
+t
+s
+A
+P
+I
+′
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterAND 
+m
+¨
+ etric 
+=
+¨
+  
+′
+ p95 
+′
+ AND 
+t
+¨
+ ransaction 
+=
+¨
+  
+′
+ GETPostsAPI 
+′
+ GROUPBYtime(__interval) fill(null)"
+},
+{
+"refId": "C",
+"query": "SELECT "upper" FROM "aiperf_forecast" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+A
+N
+D
+m
+¨
+e
+t
+r
+i
+c
+=
+¨
+′
+p
+95
+′
+A
+N
+D
+t
+¨
+r
+a
+n
+s
+a
+c
+t
+i
+o
+n
+=
+¨
+′
+G
+E
+T
+P
+o
+s
+t
+s
+A
+P
+I
+′
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterAND 
+m
+¨
+ etric 
+=
+¨
+  
+′
+ p95 
+′
+ AND 
+t
+¨
+ ransaction 
+=
+¨
+  
+′
+ GETPostsAPI 
+′
+ GROUPBYtime(__interval) fill(null)"
+},
+{
+"refId": "D",
+"query": "SELECT "lower" FROM "aiperf_forecast" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+A
+N
+D
+m
+¨
+e
+t
+r
+i
+c
+=
+¨
+′
+p
+95
+′
+A
+N
+D
+t
+¨
+r
+a
+n
+s
+a
+c
+t
+i
+o
+n
+=
+¨
+′
+G
+E
+T
+P
+o
+s
+t
+s
+A
+P
+I
+′
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterAND 
+m
+¨
+ etric 
+=
+¨
+  
+′
+ p95 
+′
+ AND 
+t
+¨
+ ransaction 
+=
+¨
+  
+′
+ GETPostsAPI 
+′
+ GROUPBYtime(__interval) fill(null)"
+}
+],
+"lines": true,
+"linewidth": 2,
+"fill": 1,
+"stack": false
+},
+{
+"type": "table",
+"title": "aiperf_alerts (recent)",
+"id": 2,
+"datasource": "Aiperf InfluxDB",
+"targets": [
+{
+"refId": "A",
+"query": "SELECT "message", "severity", "value", "expected_lower", "expected_upper" FROM "aiperf_alerts" WHERE $timeFilter ORDER BY time DESC LIMIT 100"
+}
+]
+},
+{
+"type": "graph",
+"title": "p95 - all transactions (compare)",
+"id": 3,
+"datasource": "Aiperf InfluxDB",
+"targets": [
+{
+"refId": "A",
+"query": "SELECT percentile("duration_ms",95) AS "p95" FROM "jmeter" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterGROUPBYtime(__interval), "transaction" fill(null)"
+},
+{
+"refId": "B",
+"query": "SELECT "value" FROM "aiperf_forecast" WHERE 
+t
+i
+m
+e
+F
+i
+l
+t
+e
+r
+A
+N
+D
+m
+¨
+e
+t
+r
+i
+c
+=
+¨
+′
+p
+95
+′
+G
+R
+O
+U
+P
+B
+Y
+t
+i
+m
+e
+(
+timeFilterAND 
+m
+¨
+ etric 
+=
+¨
+  
+′
+ p95 
+′
+ GROUPBYtime(__interval), "transaction" fill(null)"
+}
+],
+"lines": true,
+"linewidth": 1,
+"fill": 0
+}
+]
+},
+"overwrite": false
+}
