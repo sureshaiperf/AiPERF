@@ -136,11 +136,6 @@ for service_name, service_url in SERVICES.items():
         2
     )
 
-    jvm_memory_max_mb = round(
-        (jvm_memory_max_bytes or 0) / 1024 / 1024,
-        2
-    )
-
     # -------------------------------------------------
     # Application Metrics
     # -------------------------------------------------
@@ -157,7 +152,6 @@ for service_name, service_url in SERVICES.items():
     print(f"System CPU %         : {system_cpu}")
     print(f"Process CPU %        : {process_cpu}")
     print(f"JVM Memory Used MB   : {jvm_memory_used_mb}")
-    print(f"JVM Memory Max MB    : {jvm_memory_max_mb}")
     print(f"JVM Threads Live     : {jvm_threads_live}")
     print(f"HTTP Requests        : {http_server_requests}")
 
@@ -188,8 +182,8 @@ for service_name, service_url in SERVICES.items():
             "jvm_memory_used_mb":
                 float(jvm_memory_used_mb),
 
-            "jvm_memory_max_mb":
-                float(jvm_memory_max_mb),
+            #"jvm_memory_max_mb":
+            #    float(jvm_memory_max_mb),
 
             "jvm_threads_live":
                 int(jvm_threads_live or 0),

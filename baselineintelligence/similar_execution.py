@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+import sys
 
 from influxdb import InfluxDBClient
 from sklearn.preprocessing import StandardScaler
@@ -24,12 +26,18 @@ result = client.query(
 
 points = list(result.get_points())
 
-if len(points) < 5:
-    raise Exception(
-        f"Minimum 5 executions required. Found {len(points)}."
-    )
-
 df = pd.DataFrame(points)
+
+if len(df) < 5:
+    print("\n===================================")
+    print("SIMILAR EXECUTION INTELLIGENCE")
+    print("===================================")
+    print(
+        f"WARNING: Only {len(df)} execution(s) available. "
+        "Minimum 5 executions required for similarity analysis."
+    )
+    print("Skipping Similar Execution Intelligence.")
+    sys.exit(0)
 
 print(f"Total Fingerprints Found : {len(df)}")
 
@@ -39,41 +47,29 @@ print(f"Total Fingerprints Found : {len(df)}")
 
 feature_columns = [
 
-    # Performance
-
     "avg_rt",
     "p95",
     "p99",
     "throughput",
     "error_rate",
 
-    # Gateway
+    "host_system_cpu",
 
-    "gateway_system_cpu",
     "gateway_process_cpu",
     "gateway_jvm_memory",
     "gateway_jvm_threads",
     "gateway_http_requests",
 
-    # User
-
-    "user_system_cpu",
     "user_process_cpu",
     "user_jvm_memory",
     "user_jvm_threads",
     "user_http_requests",
 
-    # Product
-
-    "product_system_cpu",
     "product_process_cpu",
     "product_jvm_memory",
     "product_jvm_threads",
     "product_http_requests",
 
-    # Order
-
-    "order_system_cpu",
     "order_process_cpu",
     "order_jvm_memory",
     "order_jvm_threads",
