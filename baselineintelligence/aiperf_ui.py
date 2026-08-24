@@ -19,11 +19,13 @@ if st.button("Ask"):
     st.subheader("AI Response")
 
     st.write("""
-Release Risk: Medium
+    Jai Sri Rama!!
+    
+    Release Risk: Medium
 
-Root Cause:
-Gateway CPU utilization increased.
+    Root Cause:
+    Gateway CPU utilization increased.
 
-Recommendation:
-Review Gateway changes before release.
-""")
+    Recommendation:
+    Review Gateway changes before release.
+    """)

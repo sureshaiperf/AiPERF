@@ -86,7 +86,7 @@ print(f"Using RUN_ID = {run_id}")
 if not run_id:
     raise Exception("RUN_ID environment variable not found")
 
-print(f"Using Run ID: {run_id}")
+#print(f"Using Run ID: {run_id}")
 
 result = client.query(
     """
