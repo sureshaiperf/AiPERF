@@ -71,11 +71,9 @@ print(
 
 transaction_metrics = [
 
-    "samples",
     "avg_rt",
     "p95",
     "p99",
-    "errors",
     "error_pct"
 ]
 
