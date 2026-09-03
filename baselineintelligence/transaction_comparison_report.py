@@ -183,17 +183,14 @@ service_df = pd.DataFrame(
 if not service_df.empty:
 
     service_metrics = [
-
-        "system_cpu_usage",
-
-        "process_cpu_usage",
-
-        "jvm_memory_used_mb",
-
-        "jvm_threads_live",
-
-        "http_server_requests"
-    ]
+    "request_count",
+    "avg_response_time_ms",
+    "max_response_time_ms",
+    "active_requests",
+    "executor_active",
+    "heap_pct",
+    "gc_overhead"
+]
 
     for service in service_df[
         "service_name"
@@ -228,7 +225,7 @@ if not service_df.empty:
         for metric in service_metrics:
 
             current_value = float(
-                current_row[metric] or 0.0
+                current_row.get(metric, 0)
             )
 
             historical_value = float(
