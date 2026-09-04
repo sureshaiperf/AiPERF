@@ -5,15 +5,7 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.19.10-hotspot'
         JMETER_HOME = 'C:\\jmeter\\apache-jmeter-5.6.3'
         PYTHON = 'C:\\Users\\Suresh.Pittala\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        PRIMARY_API_URL = credentials('aiperf-primary-api-url')
-        PRIMARY_API_KEY = credentials('aiperf-primary-api-key')
-        FAILOVER_API_URL = credentials('aiperf-failover-api-url')
-        FAILOVER_API_KEY = credentials('aiperf-failover-api-key')
-        EMBEDDING_API_URL = credentials('aiperf-embedding-api-url')
-        EMBEDDING_API_KEY = credentials('aiperf-embedding-api-key')
-        PRIMARY_MODEL = 'gpt-5-2-chat'
-        FAILOVER_MODEL = 'gpt-5-2'
-        EMBEDDING_MODEL = 'text-embeddings'
+        INTELLIGENCE_DIR = 'C:\\practice\\AiPERF\\baselineintelligence'
     }
 
     stages {
@@ -28,7 +20,6 @@ pipeline {
                 bat '''
                 if exist logs rmdir /s /q logs
                 if exist html rmdir /s /q html
-                if exist baselineintelligence\\__pycache__ rmdir /s /q baselineintelligence\\__pycache__
                 mkdir logs
                 mkdir html
                 '''
@@ -61,7 +52,7 @@ pipeline {
         stage('Collect Execution Data') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" actuator_metrics_collector.py
                 if errorlevel 1 exit /b 1
 
@@ -80,7 +71,7 @@ pipeline {
         stage('Build Comparisons') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" baseline_compare.py
                 if errorlevel 1 exit /b 1
 
@@ -108,7 +99,7 @@ pipeline {
         stage('Validate Run Data') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" validate_run.py
                 if errorlevel 1 exit /b 1
                 '''
@@ -118,11 +109,11 @@ pipeline {
         stage('Run Intelligence Engines') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" similar_execution.py
                 if errorlevel 1 exit /b 1
 
-                "%PYTHON%" readiness_score.py --build-id "%RUN_ID%"
+                "%PYTHON%" readiness_score.py --run-id "%RUN_ID%"
                 if errorlevel 1 exit /b 1
 
                 "%PYTHON%" anomaly_detection.py
@@ -137,7 +128,7 @@ pipeline {
         stage('Build Findings and Knowledge Layer') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" aiperf_findings_package.py
                 if errorlevel 1 exit /b 1
                 '''
@@ -147,7 +138,7 @@ pipeline {
         stage('Release Gate') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" release_gate.py
                 if errorlevel 1 exit /b 1
                 '''
@@ -157,7 +148,7 @@ pipeline {
         stage('Generate AI Reports') {
             steps {
                 bat '''
-                cd /d "%WORKSPACE%\\baselineintelligence"
+                cd /d "%INTELLIGENCE_DIR%"
                 "%PYTHON%" ai_release_advisor.py
                 if errorlevel 1 exit /b 1
 
