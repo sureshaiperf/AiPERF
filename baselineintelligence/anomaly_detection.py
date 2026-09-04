@@ -57,7 +57,6 @@ def detect_anomalies(
     metrics: Iterable[str] = DEFAULT_METRICS,
     threshold: float = 3.5,
     minimum_history: int = 5,
-    run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Analyze the newest point and return one result per available metric.
 
@@ -76,15 +75,8 @@ def detect_anomalies(
         return []
 
     rows.sort(key=lambda row: str(row.get("time", "")))
-    if run_id is None:
-        latest = rows[-1]
-        history_rows = rows[:-1]
-    else:
-        matching = [row for row in rows if str(row.get("run_id") or row.get("build_id")) == str(run_id)]
-        if not matching:
-            return []
-        latest = matching[-1]
-        history_rows = [row for row in rows if row is not latest and str(row.get("run_id") or row.get("build_id")) != str(run_id)]
+    latest = rows[-1]
+    history_rows = rows[:-1]
     latest_run_id = latest.get("run_id") or latest.get("build_id") or "UNKNOWN"
     results: list[dict[str, Any]] = []
 
@@ -182,7 +174,6 @@ def run_anomaly_detection(
     threshold: float = 3.5,
     minimum_history: int = 5,
     write: bool = True,
-    run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Read execution history, detect anomalies, and optionally persist them."""
     query = f'SELECT * FROM "{measurement}" ORDER BY time ASC'
@@ -192,7 +183,6 @@ def run_anomaly_detection(
         metrics=metrics,
         threshold=threshold,
         minimum_history=minimum_history,
-        run_id=run_id,
     )
     if write and results:
         client.write_points(to_influx_points(results))
@@ -205,15 +195,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--minimum-history", type=int, default=5)
     parser.add_argument("--metrics", nargs="+", default=list(DEFAULT_METRICS))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--run-id", default=os.getenv("RUN_ID"))
     parser.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
 
 def main() -> int:
     args = _build_parser().parse_args()
-    if not args.run_id:
-        raise ValueError("RUN_ID must be provided with --run-id or the RUN_ID environment variable")
 
     from influxdb import InfluxDBClient
 
@@ -228,7 +215,6 @@ def main() -> int:
         threshold=args.threshold,
         minimum_history=args.minimum_history,
         write=not args.dry_run,
-        run_id=args.run_id,
     )
     if args.as_json:
         print(json.dumps(results, allow_nan=False))
