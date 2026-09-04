@@ -5,6 +5,15 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.19.10-hotspot'
         JMETER_HOME = 'C:\\jmeter\\apache-jmeter-5.6.3'
         PYTHON = 'C:\\Users\\Suresh.Pittala\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+        PRIMARY_API_URL = credentials('aiperf-primary-api-url')
+        PRIMARY_API_KEY = credentials('aiperf-primary-api-key')
+        FAILOVER_API_URL = credentials('aiperf-failover-api-url')
+        FAILOVER_API_KEY = credentials('aiperf-failover-api-key')
+        EMBEDDING_API_URL = credentials('aiperf-embedding-api-url')
+        EMBEDDING_API_KEY = credentials('aiperf-embedding-api-key')
+        PRIMARY_MODEL = 'gpt-5-2-chat'
+        FAILOVER_MODEL = 'gpt-5-2'
+        EMBEDDING_MODEL = 'text-embeddings'
     }
 
     stages {

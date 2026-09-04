@@ -12,7 +12,8 @@ import os
 # LOAD ENVIRONMENT VARIABLES
 # =====================================================
 
-load_dotenv(override=True)
+# Keep Jenkins-injected credentials authoritative while supporting local .env runs.
+load_dotenv(override=False)
 
 # =====================================================
 # PRIMARY MODEL
