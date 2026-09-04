@@ -187,9 +187,4 @@ pipeline {
         }
     }
 
-    post {
-        always {
-            echo 'Jenkins pipeline completed.'
-        }
-    }
 }
