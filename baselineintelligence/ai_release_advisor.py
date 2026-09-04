@@ -1,7 +1,5 @@
-#ai_release_advisor.py
-
 # =====================================================
-# AiPERF GPT Release Advisor
+# AiPERF GPT Copilot
 # =====================================================
 
 from dotenv import load_dotenv
@@ -16,28 +14,103 @@ import os
 
 load_dotenv(override=True)
 
-API_URL = os.getenv("API_URL")
-API_KEY = os.getenv("API_KEY")
-
-if not API_URL:
-    raise Exception(
-        "API_URL environment variable not found"
-    )
-
-if not API_KEY:
-    raise Exception(
-        "API_KEY environment variable not found"
-    )
-
 # =====================================================
-# GPT CALL
+# PRIMARY MODEL
 # =====================================================
 
-def call_gpt(prompt):
+PRIMARY_API_URL = os.getenv("PRIMARY_API_URL")
+PRIMARY_API_KEY = os.getenv("PRIMARY_API_KEY")
+PRIMARY_MODEL = os.getenv(
+    "PRIMARY_MODEL",
+    "gpt-5-2-chat"
+)
+
+# =====================================================
+# FAILOVER MODEL
+# =====================================================
+
+FAILOVER_API_URL = os.getenv("FAILOVER_API_URL")
+FAILOVER_API_KEY = os.getenv("FAILOVER_API_KEY")
+FAILOVER_MODEL = os.getenv(
+    "FAILOVER_MODEL",
+    "gpt-5-mini"
+)
+
+# =====================================================
+# EMBEDDING MODEL
+# =====================================================
+
+EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY")
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    "text-embedding-3-large"
+)
+
+# =====================================================
+# VALIDATION
+# =====================================================
+
+if not PRIMARY_API_URL:
+    raise Exception(
+        "PRIMARY_API_URL environment variable not found"
+    )
+
+if not PRIMARY_API_KEY:
+    raise Exception(
+        "PRIMARY_API_KEY environment variable not found"
+    )
+
+if not PRIMARY_MODEL:
+    raise Exception(
+        "PRIMARY_MODEL environment variable not found"
+    )
+
+if not FAILOVER_API_URL:
+    raise Exception(
+        "FAILOVER_API_URL environment variable not found"
+    )
+
+if not FAILOVER_API_KEY:
+    raise Exception(
+        "FAILOVER_API_KEY environment variable not found"
+    )
+
+if not FAILOVER_MODEL:
+    raise Exception(
+        "FAILOVER_MODEL environment variable not found"
+    )
+
+print("\n===================================")
+print("AiPERF GPT Configuration")
+print("===================================")
+
+print(f"PRIMARY_MODEL  : {PRIMARY_MODEL}")
+print(f"FAILOVER_MODEL : {FAILOVER_MODEL}")
+print(f"EMBEDDING_MODEL: {EMBEDDING_MODEL}")
+
+print("===================================\n")
+
+# =====================================================
+# GENERIC MODEL CALL
+# =====================================================
+
+def call_model(
+    model,
+    api_url,
+    api_key,
+    prompt
+):
 
     payload = {
-        "model": "gpt-5-chat",
+        "model": model,
         "messages": [
+            {
+                "role": "system",
+                "content":
+                    "You are AiPERF Copilot, an expert "
+                    "Performance Engineering Architect."
+            },
             {
                 "role": "user",
                 "content": prompt
@@ -45,55 +118,109 @@ def call_gpt(prompt):
         ],
         "temperature": 0.3,
         "top_p": 0.9,
-        "max_tokens": 500
+        "max_tokens": 1500
     }
 
     headers = {
-        "Content-Type": "application/json",
-        "X-API-KEY": API_KEY
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}"
     }
 
     response = requests.post(
-        API_URL,
-        headers=headers,
-        json=payload,
-        timeout=120
+    api_url,
+    headers=headers,
+    json=payload,
+    timeout=120
+)
+
+    print(
+        f"MODEL={model} | STATUS={response.status_code}"
     )
+
+    if response.status_code != 200:
+        print(
+            f"MODEL={model} RESPONSE={response.text}"
+        )
 
     response.raise_for_status()
 
     data = response.json()
 
+    if "choices" not in data:
+        raise Exception(
+        f"Unexpected response from model: {data}"
+    )
+
     return data["choices"][0]["message"]["content"]
 
 # =====================================================
-# RELEASE ADVISOR
+# GPT FAILOVER LOGIC
 # =====================================================
 
-def generate_ai_advice():
+def call_gpt(prompt):
 
-    print("\n===================================")
-    print("AIPERF GPT RELEASE ADVISOR")
-    print("===================================\n")
+    models = [
 
-    # =================================================
-    # INFLUXDB
-    # =================================================
+        {
+            "model": PRIMARY_MODEL,
+            "api_url": PRIMARY_API_URL,
+            "api_key": PRIMARY_API_KEY
+        },
 
-    client = InfluxDBClient(
-        host="localhost",
-        port=8086,
-        database="jmeter"
+        {
+            "model": FAILOVER_MODEL,
+            "api_url": FAILOVER_API_URL,
+            "api_key": FAILOVER_API_KEY
+        }
+
+    ]
+
+    last_error = None
+
+    for config in models:
+
+        try:
+
+            print("\n===================================")
+            print(f"TRYING MODEL : {config['model']}")
+            print("===================================\n")
+
+            response = call_model(
+                model=config["model"],
+                api_url=config["api_url"],
+                api_key=config["api_key"],
+                prompt=prompt
+            )
+
+            print("\n===================================")
+            print(f"SUCCESS USING : {config['model']}")
+            print("===================================\n")
+
+            return response
+
+        except Exception as ex:
+
+            print("\n===================================")
+            print(f"FAILED MODEL : {config['model']}")
+            print("===================================\n")
+
+            print(str(ex))
+
+            last_error = ex
+
+    raise Exception(
+        f"All configured models failed. Last Error: {last_error}"
     )
 
-    # =================================================
-    # GET LATEST RCA
-    # =================================================
+# =====================================================
+# READ FINDINGS PACKAGE
+# =====================================================
+
+def get_latest_findings_package(client):
 
     query = """
     SELECT *
-    FROM aiperf_ai_insights
-    WHERE insight_type='rca'
+    FROM aiperf_findings_package
     ORDER BY time DESC
     LIMIT 1
     """
@@ -103,141 +230,306 @@ def generate_ai_advice():
     )
 
     if not rows:
-        raise Exception(
-            "No RCA data found"
+
+        return (
+            "UNKNOWN",
+            "No findings package available."
         )
 
-    rca = rows[0]
+    row = rows[0]
 
-    run_id = rca.get(
+    run_id = row.get(
         "run_id",
         "UNKNOWN"
     )
 
-    transaction_name = rca.get(
-        "transaction_name",
-        "UNKNOWN"
+    findings_json = row.get(
+        "findings_json",
+        "No findings available."
     )
 
-    transaction_metric = rca.get(
-        "transaction_metric",
-        "UNKNOWN"
+    return run_id, findings_json
+
+
+# =====================================================
+# EMBEDDING PLACEHOLDER
+# FUTURE KNOWLEDGE LAYER
+# =====================================================
+
+def create_embedding(text):
+
+    if (
+        not EMBEDDING_API_URL
+        or not EMBEDDING_API_KEY
+        or not EMBEDDING_MODEL
+    ):
+
+        print(
+            "Embedding configuration not found. "
+            "Skipping embedding generation."
+        )
+
+        return None
+
+    try:
+
+        payload = {
+            "model": EMBEDDING_MODEL,
+            "input": text
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {EMBEDDING_API_KEY}"
+        }
+
+        response = requests.post(
+            EMBEDDING_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=120
+        )
+
+        response.raise_for_status()
+
+        print(
+            "Embedding generated successfully."
+        )
+
+        return response.json()
+
+    except Exception as ex:
+
+        print(
+            f"Embedding Error: {str(ex)}"
+        )
+
+        return None
+
+
+# =====================================================
+# BUILD GPT CONTEXT
+# =====================================================
+
+
+# =====================================================
+# GENERATE AI RESPONSE
+# =====================================================
+
+def generate_ai_advice(user_question=None):
+
+    print("\n===================================")
+    print("AIPERF GPT COPILOT")
+    print("===================================\n")
+
+    client = InfluxDBClient(
+        host="localhost",
+        port=8086,
+        database="jmeter"
     )
 
-    transaction_variance_pct = rca.get(
-        "transaction_variance_pct",
-        0
+    import json
+
+    # =====================================================
+    # STEP 1
+    # Read latest AiPERF Findings Package
+    # This is now the PRIMARY context source for GPT.
+    # =====================================================
+
+    print("\n===================================")
+    print("LOADING FINDINGS PACKAGE")
+    print("===================================\n")
+
+    run_id, findings_context = get_latest_findings_package(client)
+    print(f"RUN_ID : {run_id}")
+
+    print(
+        f"FINDINGS SIZE : "
+        f"{len(str(findings_context))} characters"
     )
 
-    service_name = rca.get(
-        "service_name",
-        "UNKNOWN"
+    # =====================================================
+    # STEP 2
+    # Convert Findings Package JSON into readable format
+    # Improves GPT reasoning quality
+    # =====================================================
+
+    try:
+
+        findings_context = json.dumps(
+            json.loads(findings_context),
+            indent=2
+        )
+
+        print(
+            "Findings package successfully formatted."
+        )
+
+    except Exception:
+
+        print(
+            "Findings package is not valid JSON. "
+            "Proceeding with raw text."
+        )
+
+    if not user_question:
+        user_question = "Can I release this build?"
+
+    try:
+
+        if (
+            EMBEDDING_API_URL
+            and EMBEDDING_API_KEY
+            and EMBEDDING_MODEL
+        ):
+
+            print("\n===================================")
+            print("GENERATING EMBEDDINGS")
+            print("===================================\n")
+
+            create_embedding(findings_context)
+
+        else:
+
+            print(
+                "Embedding configuration not found. "
+                "Skipping embedding generation."
+            )
+
+    except Exception as ex:
+
+        print(
+            f"Embedding Error: {str(ex)}"
+        )
+
+    performance_keywords = [
+        "release",
+        "release readiness",
+        "performance",
+        "api",
+        "latency",
+        "throughput",
+        "response",
+        "p95",
+        "p99",
+        "baseline",
+        "risk",
+        "service",
+        "bottleneck",
+        "execution",
+        "regression",
+        "transaction",
+        "memory",
+        "cpu",
+        "thread",
+        "jvm",
+        "anomaly",
+        "capacity",
+        "sla",
+        "availability",
+        "scalability",
+        "reliability",
+        "similar execution"
+    ]
+
+    is_performance_question = any(
+        keyword in user_question.lower()
+        for keyword in performance_keywords
     )
 
-    service_metric = rca.get(
-        "service_metric",
-        "UNKNOWN"
-    )
+    if is_performance_question:
 
-    service_variance_pct = rca.get(
-        "service_variance_pct",
-        0
-    )
+        prompt = f"""
+You are AiPERF Copilot.
 
-    rca_text = rca.get(
-        "rca_text",
-        "No RCA available"
-    )
+You are an expert Chief Performance Architect.
 
-    print(f"Run ID : {run_id}")
+Analyze the execution findings package and answer
+using evidence from the package.
 
-    # =================================================
-    # GPT PROMPT
-    # =================================================
-
-    prompt = f"""
-You are an expert Performance Engineering Architect and AI Release Advisor.
-
-Analyze the findings below.
-
-Run ID:
+RUN ID:
 {run_id}
 
-Top Transaction Regression:
-Transaction: {transaction_name}
-Metric: {transaction_metric}
-Variance: {transaction_variance_pct}%
+AIPERF FINDINGS PACKAGE:
+{findings_context}
 
-Top Service Regression:
-Service: {service_name}
-Metric: {service_metric}
-Variance: {service_variance_pct}%
+USER QUESTION:
+{user_question}
 
-Root Cause Analysis:
-{rca_text}
+Provide:
 
-Provide your answer in the following format:
+1. Executive Summary
+2. Key Findings
+3. Risks
+4. Root Cause Assessment
+5. Recommendations
+6. Release Impact
 
-Executive Summary:
-<summary>
+Use only the evidence available in the findings package.
 
-Risk Level:
-LOW / MEDIUM / HIGH / CRITICAL
+Do not invent metrics.
 
-Release Recommendation:
-GO / GO WITH CAUTION / NO GO
-
-Root Cause Hypothesis:
-<hypothesis>
-
-Recommended Actions:
-<actions>
-
-Keep the response concise and executive friendly.
+Respond in markdown.
 """
 
-    # =================================================
-    # CALL GPT
-    # =================================================
+    else:
 
-    print("\nCalling GPT...\n")
+        prompt = f"""
+You are AiPERF Copilot.
+
+User Question:
+{user_question}
+
+Answer naturally.
+
+Provide only the answer.
+"""
+
+    print("\nCalling AI Engine...\n")
 
     response_text = call_gpt(prompt)
 
     print("\n===================================")
-    print("GPT RESPONSE")
+    print("AI RESPONSE")
     print("===================================\n")
 
     print(response_text)
 
-    # =================================================
-    # SAVE TO INFLUXDB
-    # =================================================
+    try:
 
-    json_body = [
+        json_body = [
 
-        {
-            "measurement": "aiperf_ai_insights",
+            {
+                "measurement": "aiperf_ai_insights",
 
-            "tags": {
-                "run_id": run_id,
-                "insight_type": "gpt_release_advisor"
-            },
+                "tags": {
+                    "run_id": run_id,
+                    "insight_type": "gpt_release_advisor"
+                },
 
-            "fields": {
-
-                "insight_text":
-                    str(response_text)
+                "fields": {
+                    "question": str(user_question),
+                    "insight_text": str(response_text)
+                }
             }
-        }
 
-    ]
+        ]
 
-    client.write_points(json_body)
+        client.write_points(json_body)
 
-    print("\n===================================")
-    print("GPT RELEASE ADVISOR WRITTEN")
-    print("===================================\n")
+        print(
+            "\nGPT RESPONSE WRITTEN TO INFLUXDB\n"
+        )
+
+    except Exception as ex:
+
+        print(
+            f"Unable to write GPT response: {str(ex)}"
+        )
+    finally:
+        client.close()
+
+    return response_text
 
 # =====================================================
 # MAIN
@@ -245,4 +537,10 @@ Keep the response concise and executive friendly.
 
 if __name__ == "__main__":
 
-    generate_ai_advice()
+    response = generate_ai_advice()
+
+    print("\n===================================")
+    print("FINAL AI RESPONSE")
+    print("===================================\n")
+
+    print(response)
