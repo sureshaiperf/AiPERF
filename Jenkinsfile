@@ -184,11 +184,17 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts(
-                artifacts: 'logs/results.jtl,html/report/**',
-                fingerprint: true,
-                allowEmptyArchive: false
-            )
+            script {
+                if (getContext(hudson.FilePath)) {
+                    archiveArtifacts(
+                        artifacts: 'logs/results.jtl,html/report/**',
+                        fingerprint: true,
+                        allowEmptyArchive: true
+                    )
+                } else {
+                    echo 'Workspace unavailable; skipping artifact archival.'
+                }
+            }
         }
     }
 }
