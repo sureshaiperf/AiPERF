@@ -1,5 +1,6 @@
 from influxdb import InfluxDBClient
-from datetime import datetime
+import os
+import sys
 
 # --------------------------------------------------
 # InfluxDB Connection
@@ -15,9 +16,14 @@ client = InfluxDBClient(
 # Read Baseline Analysis Results
 # --------------------------------------------------
 
-query = """
+run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+if not run_id:
+    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+
+query = f"""
 SELECT LAST("deviation")
 FROM "aiperf_analysis"
+WHERE "run_id"='{run_id}'
 GROUP BY "transaction","status"
 """
 
@@ -76,8 +82,6 @@ print(f"Status        : {readiness}")
 # --------------------------------------------------
 # Store Result
 # --------------------------------------------------
-
-run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 json_body = [
     {

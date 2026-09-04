@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import sys
+import os
 
 from influxdb import InfluxDBClient
 from sklearn.preprocessing import StandardScaler
@@ -126,10 +127,14 @@ original_df = original_df.sort_values("time")
 # Current Execution
 # =====================================================
 
-current_run = df.iloc[-1]
-current_original = original_df.iloc[-1]
-
-current_run_id = current_original["run_id"]
+current_run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+if not current_run_id:
+    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+current_rows = df[df["run_id"].astype(str) == str(current_run_id)]
+if current_rows.empty:
+    raise ValueError(f"No fingerprint found for RUN_ID={current_run_id}")
+current_run = current_rows.iloc[-1]
+current_original = original_df[original_df["run_id"].astype(str) == str(current_run_id)].iloc[-1]
 
 print(f"Current Run : {current_run_id}")
 
@@ -143,10 +148,12 @@ current_vector = current_run[
 
 similarity_results = []
 
-for idx in range(len(df) - 1):
+historical_df = df[df["run_id"].astype(str) != str(current_run_id)]
+historical_original_df = original_df[original_df["run_id"].astype(str) != str(current_run_id)]
+for idx in range(len(historical_df)):
 
-    historical_run = df.iloc[idx]
-    historical_original = original_df.iloc[idx]
+    historical_run = historical_df.iloc[idx]
+    historical_original = historical_original_df.iloc[idx]
 
     historical_vector = historical_run[
         feature_columns

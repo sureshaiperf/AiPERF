@@ -109,6 +109,14 @@ def get_service_impacts(run_id):
     return list(result.get_points())
 
 
+def get_service_health_records(run_id):
+    query = f"""
+    SELECT * FROM aiperf_service_health
+    WHERE run_id='{run_id}'
+    """
+    return list(client.query(query).get_points())
+
+
 def get_ai_insights(run_id):
 
     query = f"""
@@ -517,6 +525,17 @@ def main(influx_client=None):
         service_health = build_service_health(
             service_impacts
         )
+        for health in get_service_health_records(latest_run_id):
+            service_name = health.get("service_name", "UNKNOWN")
+            service_health[service_name] = {
+                "status": health.get("status", "UNKNOWN"),
+                "health_score": float(health.get("health_score", 0)),
+                "reason": health.get("reason", ""),
+                "cpu_pct": float(health.get("cpu_pct", 0)),
+                "heap_pct": float(health.get("heap_pct", 0)),
+                "gc_overhead": float(health.get("gc_overhead", 0)),
+                "active_requests": float(health.get("active_requests", 0)),
+            }
 
         try:
             bottleneck_rows = query_bottlenecks(client, latest_run_id)

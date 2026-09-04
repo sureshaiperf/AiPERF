@@ -1,6 +1,7 @@
 import pandas as pd
-
 from influxdb import InfluxDBClient
+import os
+import sys
 
 # =====================================================
 # CONFIG
@@ -55,8 +56,14 @@ if len(run_ids) < 2:
 
     exit(0)
 
-comparison_run_id = run_ids[-2]
-current_run_id = run_ids[-1]
+current_run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+if not current_run_id:
+    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+prior_runs = [run_id for run_id in run_ids if str(run_id) < str(current_run_id)]
+if current_run_id not in run_ids or not prior_runs:
+    print(f"Could not find RUN_ID={current_run_id} and a prior run.")
+    exit(0)
+comparison_run_id = prior_runs[-1]
 
 print(
     f"Comparing "

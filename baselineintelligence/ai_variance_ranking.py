@@ -1,5 +1,7 @@
 import pandas as pd
 from influxdb import InfluxDBClient
+import os
+import sys
 
 # =====================================================
 # CONFIGURATION
@@ -45,9 +47,12 @@ if df.empty:
 # FIND LATEST RUN
 # =====================================================
 
-latest_run = sorted(
-    df["current_run_id"].unique()
-)[-1]
+latest_run = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+if not latest_run:
+    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+if str(latest_run) not in df["current_run_id"].astype(str).values:
+    print(f"No comparison data found for RUN_ID={latest_run}.")
+    exit(0)
 
 print(f"Latest Run : {latest_run}")
 

@@ -2,9 +2,14 @@ from influxdb import InfluxDBClient
 from datetime import datetime, timedelta
 import statistics
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+RUN_ID = os.getenv("RUN_ID")
+if not RUN_ID:
+    raise RuntimeError("RUN_ID environment variable is required")
 
 print("===== AiPERF Baseline Intelligence (Enhanced) =====")
 
@@ -232,6 +237,7 @@ for measurement, points in current_result.items():
         analysis_point = {
             "measurement": "aiperf_analysis",
             "tags": {
+                "run_id": RUN_ID,
                 "transaction": transaction,
                 "status": status,
                 "degrading": "yes" if is_degrading else "no"

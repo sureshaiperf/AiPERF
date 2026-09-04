@@ -10,6 +10,9 @@ target/
 # Logs
 *.log
 
+# Local credentials and environment overrides
+baselineintelligence/.env
+
 # OS
 Thumbs.db
 .DS_Store

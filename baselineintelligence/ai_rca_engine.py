@@ -1,5 +1,7 @@
 from influxdb import InfluxDBClient
 import pandas as pd
+import os
+import sys
 
 # =====================================================
 # CONFIGURATION
@@ -23,9 +25,14 @@ print("===================================")
 # GET LATEST RUN
 # =====================================================
 
-query = """
+run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+if not run_id:
+    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+
+query = f"""
 SELECT *
 FROM aiperf_run_comparison
+WHERE current_run_id='{run_id}'
 ORDER BY time DESC
 LIMIT 1
 """
@@ -37,7 +44,7 @@ if not rows:
         "No run comparison data found"
     )
 
-latest_run = rows[0]["current_run_id"]
+latest_run = run_id
 
 print(f"\nCurrent Run : {latest_run}")
 
