@@ -100,6 +100,16 @@ pipeline {
             }
         }
 
+        stage('Generate Comparison Report') {
+            steps {
+                bat '''
+                set "AIPERF_REPORT_DIR=%WORKSPACE%\\reports"
+                "%PYTHON%" "%INTELLIGENCE_DIR%\\aiperf_comparison_report.py"
+                if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
         stage('Run Intelligence Engines') {
             steps {
                 bat '''
@@ -164,10 +174,18 @@ pipeline {
                     allowMissing: false
                 ])
                 archiveArtifacts(
-                    artifacts: 'logs/results.jtl,html/report/**',
+                    artifacts: 'logs/results.jtl,html/report/**,reports/**',
                     fingerprint: true,
                     allowEmptyArchive: true
                 )
+                publishHTML(target: [
+                    reportDir: 'reports',
+                    reportFiles: 'index.html',
+                    reportName: 'AiPERF Comparison Report',
+                    keepAll: true,
+                    alwaysLinkToLastBuild: true,
+                    allowMissing: true
+                ])
             }
         }
     }
