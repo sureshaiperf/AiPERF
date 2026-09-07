@@ -94,7 +94,8 @@ def get_http_request_metrics(base_url):
             return {
                 "count": 0,
                 "avg_ms": 0,
-                "max_ms": 0
+                "max_ms": 0,
+                "available": False
             }
 
         payload = response.json()
@@ -131,7 +132,8 @@ def get_http_request_metrics(base_url):
         return {
             "count": round(count, 2),
             "avg_ms": round(avg_ms, 2),
-            "max_ms": round(max_time * 1000, 2)
+            "max_ms": round(max_time * 1000, 2),
+            "available": True
         }
 
     except Exception as ex:
@@ -143,7 +145,8 @@ def get_http_request_metrics(base_url):
         return {
             "count": 0,
             "avg_ms": 0,
-            "max_ms": 0
+            "max_ms": 0,
+            "available": False
         }
 
 # =====================================================
@@ -266,6 +269,8 @@ for service_name, service_url in SERVICES.items():
 
             "request_count":
                 float(request_count),
+            "request_count_available":
+                int(http_metrics.get("available", False)),
 
             "avg_response_time_ms":
                 float(avg_response_time_ms),

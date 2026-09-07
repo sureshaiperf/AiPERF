@@ -69,14 +69,16 @@ for measurement, points in result.items():
 
     print(f"{transaction} : {status}")
 
-for row in variance_rows:
-    variance = float(row.get("variance_pct", 0))
-    if variance >= 30:
-        fail_count += 1
-        score -= 25
-    elif variance >= 15:
-        warning_count += 1
-        score -= 10
+max_variance = max(
+    (float(row.get("variance_pct", 0)) for row in variance_rows),
+    default=0,
+)
+if max_variance >= 30 and fail_count == 0:
+    fail_count += 1
+    score -= 25
+elif max_variance >= 15 and fail_count == 0 and warning_count == 0:
+    warning_count += 1
+    score -= 10
 
 # Prevent negative score
 score = max(score, 0)
