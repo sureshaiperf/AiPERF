@@ -262,6 +262,14 @@ for service in services:
 
         "avg_rt_variance_pct":
             float(rt_variance),
+        "active_requests_baseline":
+            _number(baseline.get("active_requests")),
+        "active_requests_current":
+            _number(current.get("active_requests")),
+        "executor_active_baseline":
+            _number(baseline.get("executor_active")),
+        "executor_active_current":
+            _number(current.get("executor_active")),
 
         "heap_pct_baseline":
             float(heap_baseline),
