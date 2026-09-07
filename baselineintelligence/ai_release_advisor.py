@@ -445,7 +445,21 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
             f"Embedding Error: {str(ex)}"
         )
 
-    prompt = f"""
+    performance_keywords = (
+        "release", "readiness", "performance", "api", "latency", "throughput",
+        "response", "p95", "p99", "baseline", "risk", "service", "bottleneck",
+        "execution", "regression", "transaction", "memory", "cpu", "thread",
+        "jvm", "anomaly", "capacity", "sla", "availability", "scalability",
+        "reliability", "similar execution", "summary", "executive", "explain",
+        "what happened", "investigate", "next step",
+    )
+    is_performance_question = any(
+        keyword in user_question.lower()
+        for keyword in performance_keywords
+    )
+
+    if is_performance_question:
+        prompt = f"""
 You are AiPERF Copilot.
 
 You are an expert Chief Performance Architect for an AI-native performance
@@ -486,6 +500,19 @@ Do not invent metrics.
 For every important conclusion, name the relevant transaction or service and metric.
 Distinguish observed evidence from inference. If evidence is missing, say so.
 Respond in markdown with concise tables where they improve readability.
+"""
+    else:
+        prompt = f"""
+You are AiPERF Copilot, a helpful and respectful assistant.
+
+Respond naturally and respectfully to the user's message. If it is a
+greeting, acknowledge it warmly. Do not force a performance analysis unless
+the user asks about performance engineering or the execution.
+
+USER MESSAGE:
+{user_question}
+
+Provide only the concise response.
 """
 
     print("\nCalling AI Engine...\n")
