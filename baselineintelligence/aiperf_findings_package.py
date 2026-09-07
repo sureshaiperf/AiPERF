@@ -18,11 +18,13 @@ try:
     from .correlation_intelligence import query_correlations, analyze_correlation, persist_correlation_intelligence, summarize_correlations
     from .embeddings_knowledge_layer import create_embedding, package_to_text, store_finding
     from .historical_findings_search import find_similar_findings
+    from .evidence_orchestrator import prepare_evidence
 except ImportError:
     from bottleneck_intelligence import query_bottlenecks, analyze_bottlenecks, persist_bottleneck_intelligence, summarize_bottlenecks
     from correlation_intelligence import query_correlations, analyze_correlation, persist_correlation_intelligence, summarize_correlations
     from embeddings_knowledge_layer import create_embedding, package_to_text, store_finding
     from historical_findings_search import find_similar_findings
+    from evidence_orchestrator import prepare_evidence
 
 client = None
 DB_HOST = "localhost"
@@ -30,7 +32,7 @@ DB_PORT = 8086
 DB_NAME = "jmeter"
 
 MEASUREMENT_NAME = "aiperf_findings_package"
-FINDINGS_PACKAGE_VERSION = "1.1"
+FINDINGS_PACKAGE_VERSION = "1.2"
 
 
 # ==========================================================
@@ -616,6 +618,22 @@ def main(influx_client=None):
         "release_impact":
             release_impact,
 
+        # Keep the predicted decision distinct from observed release outcomes.
+        "release_decision": release_impact,
+        "previous_release_outcomes": [],
+        "similar_executions": [],
+        "historical_evidence": [],
+        "historical_findings": [],
+        "evidence_provenance": {
+            "current_findings": MEASUREMENT_NAME,
+            "similar_executions": "aiperf_similar_execution",
+            "historical_findings": "historical_findings_search",
+            "previous_release_outcomes": "aiperf_release_outcome",
+        },
+        "confidence": {"overall": 0.0, "basis": "Not yet enriched by evidence orchestrator."},
+        "data_quality": {"status": "PARTIAL", "missing_components": []},
+        "component_status": {},
+
         "top_regressions":
             top_regressions,
 
@@ -665,6 +683,30 @@ def main(influx_client=None):
 
         ]
     }
+
+        evidence = prepare_evidence(client, latest_run_id, findings_package)
+        findings_package["historical_evidence"] = evidence["historical_findings"]
+        findings_package["historical_findings"] = evidence["historical_findings"]
+        findings_package["similar_executions"] = evidence["similar_executions"]
+        findings_package["previous_release_outcomes"] = evidence["previous_release_outcomes"]
+        findings_package["evidence_provenance"] = evidence["evidence_provenance"]
+        findings_package["component_status"] = {
+            "current_findings": "AVAILABLE",
+            "similar_executions": "AVAILABLE" if evidence["similar_executions"] else "UNAVAILABLE",
+            "historical_findings": "AVAILABLE" if evidence["historical_findings"] else "UNAVAILABLE",
+            "previous_release_outcomes": "AVAILABLE" if evidence["previous_release_outcomes"] else "UNAVAILABLE",
+        }
+        available = sum(value == "AVAILABLE" for value in findings_package["component_status"].values())
+        findings_package["data_quality"] = {
+            "status": "COMPLETE" if available == 4 else "PARTIAL",
+            "available_components": available,
+            "missing_components": [key for key, value in findings_package["component_status"].items()
+                                   if value != "AVAILABLE"],
+        }
+        findings_package["confidence"] = {
+            "overall": round(available / 4, 2),
+            "basis": "Evidence component availability",
+        }
 
         print("\n===================================")
         print("EXECUTIVE SUMMARY")

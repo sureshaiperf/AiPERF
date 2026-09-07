@@ -11,6 +11,11 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
+try:
+    from .evidence_orchestrator import prepare_evidence
+except ImportError:
+    from evidence_orchestrator import prepare_evidence
+
 
 def print_console(value=""):
     """Print text without failing on legacy Windows console encodings."""
@@ -429,14 +434,17 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
     )))
     if len(run_ids) >= 2:
         run_id = run_ids[0]
-        package_sections = []
+        packages = []
         for comparison_run_id in run_ids[:2]:
             package = get_findings_package(client, comparison_run_id)
-            package_sections.append(
-                f"RUN ID: {comparison_run_id}\n"
-                f"{package if package is not None else 'No findings package found.'}"
-            )
-        findings_context = "\n\n".join(package_sections)
+            try:
+                package = json.loads(package) if package is not None else {}
+            except (TypeError, ValueError):
+                package = {"run_id": comparison_run_id, "executive_summary": str(package)}
+            if isinstance(package, dict):
+                package.setdefault("run_id", comparison_run_id)
+            packages.append(package)
+        findings_context = json.dumps(packages, default=str)
     else:
         run_id, findings_context = get_latest_findings_package(
             client,
@@ -472,6 +480,12 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
             "Findings package is not valid JSON. "
             "Proceeding with raw text."
         )
+
+    # GPT receives the bounded evidence contract, never raw metric rows from
+    # the persisted findings package.
+    evidence_context = prepare_evidence(
+        client, str(run_id), findings_context
+    )
 
     if not user_question:
         user_question = "Can I release this build?"
@@ -540,21 +554,27 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
     is_performance_question = is_performance_question and not conceptual_question
 
     if is_performance_question:
+        intent = "release_readiness"
+        if any(term in normalized_question for term in ("similar", "historical", "previous")):
+            intent = "historical_comparison"
+        elif any(term in normalized_question for term in ("root cause", "why", "investigate")):
+            intent = "root_cause"
         prompt = f"""
 You are AiPERF Copilot.
 
 You are an expert Chief Performance Architect for an AI-native performance
 engineering platform.
 
-Answer the user's question using only the execution findings package below.
+Answer the user's question using only the intent-specific evidence contract below.
+Intent: {intent}
 This is not a general document summarizer and must not ask the user to provide
 another document when the package contains evidence.
 
 RUN ID:
 {run_id}
 
-AIPERF FINDINGS PACKAGE:
-{findings_context}
+AIPERF EVIDENCE CONTRACT:
+{json.dumps(evidence_context, indent=2, default=str)}
 
 AVAILABLE RUN CATALOG:
 {catalog if catalog else "Not requested."}
@@ -577,7 +597,8 @@ Provide:
 7. Evidence Gaps and Confidence
 8. Concrete Next Actions
 
-Use only the evidence available in the findings package.
+Use only the evidence available in the evidence contract. Do not request or
+infer raw metrics that are not present.
 
 Do not invent metrics.
 

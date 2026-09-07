@@ -41,6 +41,7 @@ DERIVED_MEASUREMENTS = (
     "aiperf_release_readiness",
     "aiperf_ai_insights",
     "aiperf_findings_package",
+    "aiperf_release_outcome",
 )
 
 
