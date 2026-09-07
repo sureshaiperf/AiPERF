@@ -225,7 +225,26 @@ def call_gpt(prompt):
 # READ FINDINGS PACKAGE
 # =====================================================
 
-def get_latest_findings_package(client):
+def get_latest_findings_package(client, requested_run_id=None):
+    if requested_run_id:
+        exact_query = f"""
+        SELECT *
+        FROM aiperf_findings_package
+        WHERE run_id='{requested_run_id}'
+        ORDER BY time DESC
+        LIMIT 1
+        """
+        exact_rows = list(client.query(exact_query).get_points())
+        if exact_rows:
+            row = exact_rows[0]
+            return requested_run_id, row.get(
+                "findings_json",
+                "No findings available."
+            )
+        print_console(
+            f"No findings package found for RUN_ID={requested_run_id}; "
+            "falling back to the latest package."
+        )
 
     query = """
     SELECT *
@@ -349,7 +368,11 @@ def generate_ai_advice(user_question=None):
     print("LOADING FINDINGS PACKAGE")
     print("===================================\n")
 
-    run_id, findings_context = get_latest_findings_package(client)
+    requested_run_id = os.getenv("RUN_ID")
+    run_id, findings_context = get_latest_findings_package(
+        client,
+        requested_run_id=requested_run_id,
+    )
     print(f"RUN_ID : {run_id}")
 
     print(
@@ -465,6 +488,10 @@ AIPERF FINDINGS PACKAGE:
 USER QUESTION:
 {user_question}
 
+The comparison reference run is not automatically a statistically stable
+baseline. Treat it as a reference execution unless the package explicitly
+provides approved baseline evidence.
+
 Provide:
 
 1. Executive Summary
@@ -473,12 +500,16 @@ Provide:
 4. Root Cause Assessment
 5. Recommendations
 6. Release Impact
+7. Evidence Gaps and Confidence
+8. Concrete Next Actions
 
 Use only the evidence available in the findings package.
 
 Do not invent metrics.
 
-Respond in markdown.
+For every important conclusion, name the relevant transaction or service and metric.
+Distinguish observed evidence from inference. If evidence is missing, say so.
+Respond in markdown with concise tables where they improve readability.
 """
 
     else:

@@ -41,18 +41,35 @@ def _variance_span(value: Any) -> str:
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return '<span class="na">N/A</span>'
+        return '<span style="color:#64748b">N/A</span>'
     css = "bad" if number > 15 else "warn" if number > 5 else "good"
-    return f'<span class="{css}">{number:,.2f}%</span>'
+    color = {"bad": "#b91c1c", "warn": "#b45309", "good": "#15803d"}[css]
+    weight = "700" if css == "bad" else "600" if css == "warn" else "400"
+    return f'<span style="color:{color};font-weight:{weight}">{number:,.2f}%</span>'
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:
-    head = "".join(f"<th>{html.escape(item)}</th>" for item in headers)
+    head = "".join(
+        f'<th style="background:#1e3a5f;color:white;text-align:left;'
+        f'padding:8px 10px;border:1px solid #cbd5e1;white-space:nowrap">'
+        f"{html.escape(item)}</th>"
+        for item in headers
+    )
     body = "".join(
-        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>\n"
+        '<tr style="border:1px solid #cbd5e1">'
+        + "".join(
+            f'<td style="padding:8px 10px;border:1px solid #cbd5e1;'
+            f'white-space:nowrap">{cell}</td>'
+            for cell in row
+        )
+        + "</tr>\n"
         for row in rows
     )
-    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    return (
+        '<div style="overflow-x:auto">'
+        '<table style="border-collapse:collapse;width:100%;font:13px Segoe UI,Arial,sans-serif">'
+        f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
+    )
 
 
 def _query_rows(client: Any, measurement: str, run_id: str) -> list[dict[str, Any]]:
@@ -209,21 +226,21 @@ tr:nth-child(even) {{ background: #f8fafc; }}
 </style></head><body>
 <h1>AiPERF Comparison Report</h1>
 <div class="meta">Generated from InfluxDB comparison measurements</div>
-<div class="run-summary">
-  <div class="run-card"><h3>Current Test Run</h3>
+<div class="run-summary" style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 22px">
+  <div class="run-card" style="border:1px solid #cbd5e1;border-radius:6px;padding:12px 14px;background:#f8fafc;min-width:280px"><h3>Current Test Run</h3>
     <p><strong>Run ID:</strong> {html.escape(run_id)}</p>
     <p><strong>Start:</strong> {html.escape(current_timeline["start"])}</p>
     <p><strong>End:</strong> {html.escape(current_timeline["end"])}</p>
     <p><strong>Duration:</strong> {html.escape(current_timeline["duration"])}</p>
   </div>
-  <div class="run-card"><h3>Compared Reference Run</h3>
+  <div class="run-card" style="border:1px solid #cbd5e1;border-radius:6px;padding:12px 14px;background:#f8fafc;min-width:280px"><h3>Compared Reference Run</h3>
     <p><strong>Run ID:</strong> {html.escape(comparison_run_id)}</p>
     <p><strong>Start:</strong> {html.escape(comparison_timeline["start"])}</p>
     <p><strong>End:</strong> {html.escape(comparison_timeline["end"])}</p>
     <p><strong>Duration:</strong> {html.escape(comparison_timeline["duration"])}</p>
   </div>
 </div>
-<div class="notice"><strong>Baseline discussion:</strong> This report compares the current run with the reference run shown above. The reference run is not yet a statistically stable multi-run baseline; review and approve the baseline separately before using it for release thresholds.</div>
+<div class="notice" style="border-left:4px solid #b45309;padding:10px 12px;background:#fff7ed;color:#7c2d12;margin:12px 0 20px"><strong>Baseline discussion:</strong> This report compares the current run with the reference run shown above. The reference run is not yet a statistically stable multi-run baseline; review and approve the baseline separately before using it for release thresholds.</div>
 <div class="tabs">
 <button class="tab active" data-panel="transactions">Transaction Comparison</button>
 <button class="tab" data-panel="services">Server Metrics Comparison</button>
@@ -231,16 +248,14 @@ tr:nth-child(even) {{ background: #f8fafc; }}
 <section id="transactions" class="panel active">
 <h2>Transaction Comparison</h2>
 <div class="meta">Latency values are milliseconds; error rate is percent.</div>
-<div class="table-wrap"><table>
-<thead><tr><th rowspan="2">Transaction</th>
-<th colspan="3">Average Response Time (ms)</th>
-<th colspan="3">P95 (ms)</th>
-<th colspan="3">P99 (ms)</th>
-<th rowspan="2">Current Error Rate</th></tr>
-<tr><th>Reference</th><th>Current</th><th>Variance</th>
-<th>Reference</th><th>Current</th><th>Variance</th>
-<th>Reference</th><th>Current</th><th>Variance</th></tr></thead>
-<tbody>{"".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>\n" for row in transaction_rows)}</tbody>
+<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font:13px Segoe UI,Arial,sans-serif">
+<thead><tr><th rowspan="2" style="background:#1e3a5f;color:white;padding:8px 10px;border:1px solid #cbd5e1">Transaction</th>
+<th colspan="3" style="background:#334e68;color:white;text-align:center;padding:8px 10px;border:1px solid #cbd5e1">Average Response Time (ms)</th>
+<th colspan="3" style="background:#334e68;color:white;text-align:center;padding:8px 10px;border:1px solid #cbd5e1">P95 (ms)</th>
+<th colspan="3" style="background:#334e68;color:white;text-align:center;padding:8px 10px;border:1px solid #cbd5e1">P99 (ms)</th>
+<th rowspan="2" style="background:#1e3a5f;color:white;padding:8px 10px;border:1px solid #cbd5e1">Current Error Rate</th></tr>
+<tr>{"".join(f'<th style="background:#1e3a5f;color:white;padding:8px 10px;border:1px solid #cbd5e1">{label}</th>' for label in ("Reference", "Current", "Variance") * 3)}</tr></thead>
+<tbody>{"".join('<tr>' + ''.join(f'<td style="padding:8px 10px;border:1px solid #cbd5e1;white-space:nowrap">{cell}</td>' for cell in row) + "</tr>\n" for row in transaction_rows)}</tbody>
 </table></div>
 </section>
 <section id="services" class="panel">
