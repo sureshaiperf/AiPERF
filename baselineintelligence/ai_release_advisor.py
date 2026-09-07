@@ -7,7 +7,9 @@ from influxdb import InfluxDBClient
 
 import requests
 import os
+import re
 import sys
+from datetime import datetime, timedelta, timezone
 
 
 def print_console(value=""):
@@ -238,20 +240,9 @@ def call_gpt(prompt):
 
 def get_latest_findings_package(client, requested_run_id=None):
     if requested_run_id:
-        exact_query = f"""
-        SELECT *
-        FROM aiperf_findings_package
-        WHERE run_id='{requested_run_id}'
-        ORDER BY time DESC
-        LIMIT 1
-        """
-        exact_rows = list(client.query(exact_query).get_points())
-        if exact_rows:
-            row = exact_rows[0]
-            return requested_run_id, row.get(
-                "findings_json",
-                "No findings available."
-            )
+        package = get_findings_package(client, requested_run_id)
+        if package is not None:
+            return requested_run_id, package
         print_console(
             f"No findings package found for RUN_ID={requested_run_id}; "
             "falling back to the latest package."
@@ -288,6 +279,43 @@ def get_latest_findings_package(client, requested_run_id=None):
     )
 
     return run_id, findings_json
+
+
+def get_findings_package(client, run_id):
+    """Load one exact run package without silently substituting another run."""
+    exact_query = f"""
+    SELECT *
+    FROM aiperf_findings_package
+    WHERE run_id='{run_id}'
+    ORDER BY time DESC
+    LIMIT 1
+    """
+    exact_rows = list(client.query(exact_query).get_points())
+    if not exact_rows:
+        return None
+    return exact_rows[0].get("findings_json", "No findings available.")
+
+
+def get_run_catalog(client, date_text=None):
+    """Return known findings runs, optionally restricted to a calendar date."""
+    if date_text:
+        day = datetime.strptime(date_text, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
+        start = day.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end = (day + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        query = (
+            'SELECT run_id FROM "aiperf_findings_package" '
+            f"WHERE time >= '{start}' AND time < '{end}'"
+        )
+    else:
+        query = 'SELECT run_id FROM "aiperf_findings_package"'
+
+    rows = list(client.query(query).get_points())
+    return sorted(
+        {str(row["run_id"]) for row in rows if row.get("run_id")},
+        reverse=True,
+    )
 
 
 # =====================================================
@@ -380,10 +408,40 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
     print("===================================\n")
 
     requested_run_id = requested_run_id or os.getenv("RUN_ID")
-    run_id, findings_context = get_latest_findings_package(
-        client,
-        requested_run_id=requested_run_id,
+    date_match = re.search(
+        r"\b(20\d{2}-\d{2}-\d{2})\b",
+        user_question or "",
     )
+    list_runs_requested = bool(re.search(
+        r"\b(show|list|give|get)\b.*\b(run[\s_-]*ids?|runs?)\b",
+        user_question or "",
+        flags=re.IGNORECASE,
+    ))
+    report_requested = "comparison report" in (user_question or "").lower()
+    catalog = get_run_catalog(
+        client,
+        date_text=date_match.group(1) if date_match else None,
+    ) if list_runs_requested or date_match or report_requested else []
+    run_ids = list(dict.fromkeys(re.findall(
+        r"RUN_[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)+",
+        user_question or "",
+        flags=re.IGNORECASE,
+    )))
+    if len(run_ids) >= 2:
+        run_id = run_ids[0]
+        package_sections = []
+        for comparison_run_id in run_ids[:2]:
+            package = get_findings_package(client, comparison_run_id)
+            package_sections.append(
+                f"RUN ID: {comparison_run_id}\n"
+                f"{package if package is not None else 'No findings package found.'}"
+            )
+        findings_context = "\n\n".join(package_sections)
+    else:
+        run_id, findings_context = get_latest_findings_package(
+            client,
+            requested_run_id=requested_run_id,
+        )
     print(f"RUN_ID : {run_id}")
 
     print(
@@ -445,18 +503,41 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
             f"Embedding Error: {str(ex)}"
         )
 
+    routing_question = user_question
+    follow_up_marker = "Follow-up user question:"
+    if follow_up_marker in routing_question:
+        routing_question = routing_question.rsplit(follow_up_marker, 1)[1].strip()
+    normalized_question = routing_question.lower()
+    conceptual_question = (
+        ("performance testing" in normalized_question
+         or "load testing" in normalized_question
+         or "stress testing" in normalized_question
+         or "testing methodology" in normalized_question)
+        and any(
+            phrase in normalized_question
+            for phrase in ("explain", "what is", "what are", "how does", "define")
+        )
+        and not any(
+            term in normalized_question
+            for term in (
+                "run", "execution", "result", "metric", "latency", "p95",
+                "p99", "regression", "baseline", "release",
+            )
+        )
+    )
     performance_keywords = (
-        "release", "readiness", "performance", "api", "latency", "throughput",
+        "release", "readiness", "api", "latency", "throughput",
         "response", "p95", "p99", "baseline", "risk", "service", "bottleneck",
         "execution", "regression", "transaction", "memory", "cpu", "thread",
         "jvm", "anomaly", "capacity", "sla", "availability", "scalability",
-        "reliability", "similar execution", "summary", "executive", "explain",
-        "what happened", "investigate", "next step",
+        "reliability", "similar execution", "executive summary",
+        "summarize this execution", "what happened", "investigate", "next step",
     )
     is_performance_question = any(
-        keyword in user_question.lower()
+        keyword in normalized_question
         for keyword in performance_keywords
-    )
+    ) or len(run_ids) >= 2 or bool(catalog)
+    is_performance_question = is_performance_question and not conceptual_question
 
     if is_performance_question:
         prompt = f"""
@@ -474,6 +555,9 @@ RUN ID:
 
 AIPERF FINDINGS PACKAGE:
 {findings_context}
+
+AVAILABLE RUN CATALOG:
+{catalog if catalog else "Not requested."}
 
 USER QUESTION:
 {user_question}
@@ -500,6 +584,12 @@ Do not invent metrics.
 For every important conclusion, name the relevant transaction or service and metric.
 Distinguish observed evidence from inference. If evidence is missing, say so.
 Respond in markdown with concise tables where they improve readability.
+If the user asks for run IDs, list only IDs present in AVAILABLE RUN CATALOG.
+If the user asks for a date, use the date-filtered catalog when available.
+If the user asks for a comparison report, explain that the Jenkins-published
+HTML report is generated for the latest pipeline comparison; for arbitrary
+runs, provide the evidence comparison from the exact findings packages and
+state when a published HTML artifact is not available.
 """
     else:
         prompt = f"""

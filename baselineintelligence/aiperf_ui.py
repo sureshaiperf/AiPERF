@@ -192,6 +192,62 @@ quick_questions = [
     "Compare the current run with its reference run",
     "What should I investigate first?",
 ]
+
+
+def is_aiperf_question(text):
+    """Keep execution evidence visible only for AiPERF questions."""
+    performance_terms = (
+        "release", "readiness", "performance", "api", "latency",
+        "throughput", "response", "p95", "p99", "baseline", "risk",
+        "service", "bottleneck", "execution", "regression", "transaction",
+        "memory", "cpu", "thread", "jvm", "anomaly", "capacity", "sla",
+        "availability", "scalability", "reliability", "summary", "compare",
+        "executive", "explain", "what happened", "investigate", "next step",
+        "run id", "runid", "comparison report", "last run", "date",
+    )
+    normalized = text.strip().lower()
+    if (
+        "performance testing" in normalized
+        and any(
+            phrase in normalized
+            for phrase in ("explain", "what is", "what are", "how does", "define")
+        )
+        and not any(
+            term in normalized
+            for term in ("run", "execution", "result", "metric", "latency", "p95", "p99")
+        )
+    ):
+        return False
+    return any(term in normalized for term in performance_terms)
+
+
+def is_catalog_question(text):
+    normalized = text.strip().lower()
+    return (
+        ("run" in normalized and ("id" in normalized or "runs" in normalized))
+        or "comparison report" in normalized
+    )
+
+
+def ask_copilot(question, previous_question=None, previous_response=None):
+    """Send a question with optional conversation context to AiPERF."""
+    if previous_question and previous_response:
+        question = (
+            "Conversation context:\n"
+            f"Previous user question: {previous_question}\n"
+            f"Previous AiPERF response: {previous_response}\n\n"
+            f"Follow-up user question: {question}"
+        )
+    with st.spinner("AiPERF is preparing your answer..."):
+        response_text = generate_ai_advice(
+            user_question=question,
+            requested_run_id=latest_run_id,
+        )
+    if not response_text or not response_text.strip():
+        raise RuntimeError("AiPERF returned an empty response.")
+    return response_text
+
+
 selected_quick_question = st.selectbox(
     "Quick question",
     quick_questions,
@@ -205,7 +261,7 @@ if st.button("Use selected quick question"):
     st.session_state["question_input"] = selected_quick_question
     st.rerun()
 
-with st.form("aiperf_question_form", clear_on_submit=False):
+with st.form("aiperf_question_form", clear_on_submit=True):
     st.text_area(
         "Your question (independent from the quick-question list)",
         key="question_input",
@@ -218,30 +274,54 @@ if ask:
     question = st.session_state["question_input"].strip()
     if not question:
         st.warning("Enter a question before analyzing.")
-    elif latest_run_id == "Unavailable":
+    elif latest_run_id == "Unavailable" and not is_catalog_question(question):
         st.error("No run-scoped findings are available. Run Jenkins before asking AiPERF.")
     else:
         try:
-            with st.spinner(f"Asking Copilot about {latest_run_id}..."):
-                response_text = generate_ai_advice(
-                    user_question=question,
-                    requested_run_id=latest_run_id,
-                )
-            if not response_text or not response_text.strip():
-                raise RuntimeError("AiPERF returned an empty response.")
+            response_text = ask_copilot(question)
             st.session_state["gpt_response"] = response_text
             st.session_state["answered_question"] = question
             st.session_state["answered_run_id"] = latest_run_id
+            st.session_state["show_evidence"] = is_aiperf_question(question)
         except Exception as exc:
             st.error(f"AiPERF analysis failed: {exc}")
 
 if "gpt_response" in st.session_state:
     st.divider()
-    st.subheader("🤖 AiPERF analysis")
-    st.caption(
-        f"Question: {st.session_state.get('answered_question', '')} | "
-        f"Evidence run: {st.session_state.get('answered_run_id', latest_run_id)}"
-    )
+    st.subheader("🤖 AiPERF Says")
+    st.caption(f"Question: {st.session_state.get('answered_question', '')}")
+    if st.session_state.get("show_evidence", True):
+        st.caption(
+            f"Evidence run: "
+            f"{st.session_state.get('answered_run_id', latest_run_id)}"
+        )
     st.markdown(st.session_state["gpt_response"])
+    with st.form("aiperf_follow_up_form", clear_on_submit=True):
+        st.text_area(
+            "Continue the conversation",
+            key="follow_up_input",
+            height=80,
+            placeholder="Reply to AiPERF or ask a follow-up question...",
+        )
+        follow_up = st.form_submit_button("Ask follow-up", type="primary")
+    if follow_up:
+        follow_up_question = st.session_state["follow_up_input"].strip()
+        if not follow_up_question:
+            st.warning("Enter a follow-up question.")
+        else:
+            try:
+                response_text = ask_copilot(
+                    follow_up_question,
+                    previous_question=st.session_state.get("answered_question"),
+                    previous_response=st.session_state.get("gpt_response"),
+                )
+                st.session_state["gpt_response"] = response_text
+                st.session_state["answered_question"] = follow_up_question
+                st.session_state["show_evidence"] = is_aiperf_question(
+                    follow_up_question
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"AiPERF follow-up failed: {exc}")
 else:
     st.info("Choose a quick question or enter your own question, then select Ask Copilot.")
