@@ -552,4 +552,4 @@ if __name__ == "__main__":
     print("FINAL AI RESPONSE")
     print("===================================\n")
 
-    print(response)
+    print_console(response)
