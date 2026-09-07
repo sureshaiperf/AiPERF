@@ -2,6 +2,7 @@ from influxdb import InfluxDBClient
 from datetime import datetime
 import math
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ for transaction, series in transaction_series.items():
     trend_abs = last - first
     trend_pct = (trend_abs / first) * 100 if first != 0 else 0
     # severity thresholds
-    if trend_pct <= 5:
+    if trend_abs <= 0:
         severity = 'STABLE'
     elif trend_pct <= 15:
         severity = 'WARNING'
@@ -93,11 +94,17 @@ for transaction, series in transaction_series.items():
     degrading = 1 if trend_abs > 0 else 0
 
     print('Transaction:', transaction)
-    print(f'  Samples: {len(xs)}, R^2: {r2:.3f}, slope/day: {slope:.3f}, trend%: {trend_pct:.2f}, severity: {severity}')
+    direction = 'DEGRADING' if degrading else 'IMPROVING'
+    print(f'  Samples: {len(xs)}, R^2: {r2:.3f}, slope/day: {slope:.3f}, trend%: {trend_pct:.2f}, direction: {direction}, severity: {severity}')
 
     analysis_points.append({
         'measurement': 'aiperf_trend_analysis',
-        'tags': {'transaction': transaction, 'severity': severity},
+        'tags': {
+            'run_id': os.getenv('RUN_ID', 'historical'),
+            'transaction': transaction,
+            'severity': severity,
+            'direction': direction
+        },
         'fields': {
             'slope_per_day': float(round(slope, 6)),
             'r2': float(round(r2, 4)),

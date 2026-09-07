@@ -1,6 +1,7 @@
 from influxdb import InfluxDBClient
 import os
 import sys
+import argparse
 
 # --------------------------------------------------
 # InfluxDB Connection
@@ -16,9 +17,12 @@ client = InfluxDBClient(
 # Read Baseline Analysis Results
 # --------------------------------------------------
 
-run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
+parser = argparse.ArgumentParser()
+parser.add_argument("--run-id", default=os.getenv("RUN_ID"))
+args = parser.parse_args()
+run_id = args.run_id
 if not run_id:
-    raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
+    raise ValueError("RUN_ID must be provided with --run-id or the RUN_ID environment variable")
 
 query = f"""
 SELECT LAST("deviation")
@@ -29,6 +33,14 @@ GROUP BY "transaction","status"
 
 result = client.query(query)
 
+variance_result = client.query(
+    f"""
+    SELECT "variance_pct"
+    FROM "aiperf_variance_ranking"
+    WHERE "run_id"='{run_id}' AND "variance_pct">=15
+    """
+)
+
 # --------------------------------------------------
 # Readiness Score Calculation
 # --------------------------------------------------
@@ -36,6 +48,7 @@ result = client.query(query)
 score = 100
 fail_count = 0
 warning_count = 0
+variance_rows = list(variance_result.get_points())
 
 print("\n===== AiPERF Release Readiness =====\n")
 
@@ -55,6 +68,15 @@ for measurement, points in result.items():
         score -= 10
 
     print(f"{transaction} : {status}")
+
+for row in variance_rows:
+    variance = float(row.get("variance_pct", 0))
+    if variance >= 30:
+        fail_count += 1
+        score -= 25
+    elif variance >= 15:
+        warning_count += 1
+        score -= 10
 
 # Prevent negative score
 score = max(score, 0)

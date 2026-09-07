@@ -51,6 +51,17 @@ def _score(value: float, history: list[float]) -> tuple[float, float, str]:
     return (math.inf if value != baseline else 0.0), baseline, "constant"
 
 
+def _clean_history(values: list[float]) -> list[float]:
+    """Exclude implausible historical spikes from robust baselines."""
+    if len(values) < 4:
+        return values
+    median = statistics.median(values)
+    mad = _median_absolute_deviation(values, median)
+    limit = max(median * 5, median + (mad * 6)) if median > 0 else math.inf
+    cleaned = [value for value in values if value <= limit]
+    return cleaned if len(cleaned) >= 3 else values
+
+
 def detect_anomalies(
     points: Iterable[Mapping[str, Any]],
     *,
@@ -98,6 +109,9 @@ def detect_anomalies(
         if current is None or len(history) < minimum_history:
             continue
 
+        history = _clean_history(history)
+        if len(history) < minimum_history:
+            continue
         score, baseline, method = _score(current, history)
         deviation_pct = (
             ((current - baseline) / abs(baseline)) * 100
