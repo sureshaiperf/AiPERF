@@ -1,5 +1,6 @@
 """Streamlit dashboard for the AiPERF findings and Copilot workflow."""
 
+import json
 import streamlit as st
 from influxdb import InfluxDBClient
 
@@ -32,10 +33,6 @@ def latest_findings():
     return rows[0] if rows else {}
 
 
-def select_quick_question():
-    st.session_state["question_input"] = st.session_state["quick_question"]
-
-
 findings = {}
 findings_error = None
 try:
@@ -44,6 +41,13 @@ except Exception as exc:
     findings_error = str(exc)
 
 latest_run_id = findings.get("run_id", "Unavailable")
+if findings.get("findings_json"):
+    try:
+        package = json.loads(findings["findings_json"])
+        package["run_id"] = findings.get("run_id", package.get("run_id"))
+        findings = package
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        findings_error = f"Findings package JSON is invalid: {exc}"
 
 st.markdown(
     """
@@ -51,7 +55,7 @@ st.markdown(
     .block-container { padding-top: 2rem; }
     .hero { padding: 1.4rem 1.6rem; border-radius: 12px;
             background: linear-gradient(120deg,#17365d,#2563eb); color: white; }
-    .hero h1 { margin: 0; }
+    .hero h1 { margin: 0; color: #ffffff; }
     .hero p { margin: .4rem 0 0; color: #dbeafe; }
     .card { border: 1px solid #dbe3ef; border-radius: 10px;
             padding: 1rem; background: #ffffff; min-height: 92px; }
@@ -128,19 +132,22 @@ quick_questions = [
     "Compare the current run with its reference run",
     "What should I investigate first?",
 ]
-st.selectbox(
+selected_quick_question = st.selectbox(
     "Quick question",
     quick_questions,
     key="quick_question",
-    on_change=select_quick_question,
 )
 
 if "question_input" not in st.session_state:
-    st.session_state["question_input"] = quick_questions[0]
+    st.session_state["question_input"] = ""
+
+if st.button("Use selected quick question"):
+    st.session_state["question_input"] = selected_quick_question
+    st.rerun()
 
 with st.form("aiperf_question_form", clear_on_submit=False):
     st.text_area(
-        "Your question",
+        "Your question (independent from the quick-question list)",
         key="question_input",
         height=90,
         help="The question is answered using only the selected run's AiPERF findings.",
