@@ -7,6 +7,14 @@ from influxdb import InfluxDBClient
 
 import requests
 import os
+import sys
+
+
+def print_console(value=""):
+    """Print text without failing on legacy Windows console encodings."""
+    text = str(value)
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    print(text.encode(encoding, errors="replace").decode(encoding))
 
 # =====================================================
 # LOAD ENVIRONMENT VARIABLES
@@ -494,7 +502,7 @@ Provide only the answer.
     print("AI RESPONSE")
     print("===================================\n")
 
-    print(response_text)
+    print_console(response_text)
 
     try:
 
