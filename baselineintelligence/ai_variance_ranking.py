@@ -70,7 +70,8 @@ transaction_exclusions = [
 ]
 
 service_exclusions = [
-    "http_server_requests"
+    "http_server_requests",
+    "request_count"
 ]
 
 latest_df = latest_df[
@@ -78,9 +79,7 @@ latest_df = latest_df[
         (latest_df["entity_type"] == "transaction")
         &
         (
-            latest_df["metric"].isin(
-                transaction_exclusions
-            )
+            latest_df["metric"].isin(transaction_exclusions)
         )
     )
 ]
@@ -90,9 +89,7 @@ latest_df = latest_df[
         (latest_df["entity_type"] == "service")
         &
         (
-            latest_df["metric"].isin(
-                service_exclusions
-            )
+            latest_df["metric"].isin(service_exclusions)
         )
     )
 ]
@@ -178,7 +175,7 @@ if json_body:
 # =====================================================
 
 print("\n===================================")
-print("TOP 10 REGRESSIONS")
+print("TOP 10 VARIANCES")
 print("===================================\n")
 
 top10 = latest_df.head(10)
@@ -191,6 +188,22 @@ for _, row in top10.iterrows():
         f"{row['entity_name']} | "
         f"{row['metric']} | "
         f"{float(row['variance_pct']):.2f}%"
+    )
+
+print("\nTOP REGRESSIONS")
+for _, row in latest_df[latest_df["variance_pct"] > 0].head(5).iterrows():
+    print(
+        f"{row['entity_type']} | {row['entity_name']} | "
+        f"{row['metric']} | {float(row['variance_pct']):.2f}%"
+    )
+
+print("\nTOP IMPROVEMENTS")
+for _, row in latest_df[latest_df["variance_pct"] < 0].sort_values(
+    "variance_pct"
+).head(5).iterrows():
+    print(
+        f"{row['entity_type']} | {row['entity_name']} | "
+        f"{row['metric']} | {float(row['variance_pct']):.2f}%"
     )
 
 # =====================================================
