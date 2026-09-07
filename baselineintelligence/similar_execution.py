@@ -47,56 +47,47 @@ print(f"Total Fingerprints Found : {len(df)}")
 # =====================================================
 
 feature_columns = [
-
     "avg_rt",
     "p95",
     "p99",
     "throughput",
     "error_rate",
-
-    "host_system_cpu",
-
-    "gateway_process_cpu",
-    "gateway_jvm_memory",
-    "gateway_jvm_threads",
-    "gateway_http_requests",
-
-    "user_process_cpu",
-    "user_jvm_memory",
-    "user_jvm_threads",
-    "user_http_requests",
-
-    "product_process_cpu",
-    "product_jvm_memory",
-    "product_jvm_threads",
-    "product_http_requests",
-
-    "order_process_cpu",
-    "order_jvm_memory",
-    "order_jvm_threads",
-    "order_http_requests"
+    "gateway_heap_pct",
+    "gateway_active_requests",
+    "gateway_executor_active",
+    "gateway_avg_response_time_ms",
+    "gateway_request_count",
+    "user_heap_pct",
+    "user_active_requests",
+    "user_executor_active",
+    "user_avg_response_time_ms",
+    "user_request_count",
+    "product_heap_pct",
+    "product_active_requests",
+    "product_executor_active",
+    "product_avg_response_time_ms",
+    "product_request_count",
+    "order_heap_pct",
+    "order_active_requests",
+    "order_executor_active",
+    "order_avg_response_time_ms",
+    "order_request_count",
 ]
-
-# =====================================================
-# Validate Columns
-# =====================================================
-
-missing_columns = [
-    c for c in feature_columns
-    if c not in df.columns
-]
-
-if missing_columns:
-
-    raise Exception(
-        f"Missing fingerprint columns: {missing_columns}"
-    )
 
 # =====================================================
 # Preserve Original Values
 # =====================================================
 
 original_df = df.copy()
+
+# =====================================================
+# Validate Columns
+# =====================================================
+
+for column in feature_columns:
+    if column not in df.columns:
+        df[column] = 0.0
+        original_df[column] = 0.0
 
 # =====================================================
 # Prepare Data For Similarity

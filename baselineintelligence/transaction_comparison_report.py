@@ -192,7 +192,6 @@ if not service_df.empty:
     service_metrics = [
     "request_count",
     "avg_response_time_ms",
-    "max_response_time_ms",
     "active_requests",
     "executor_active",
     "heap_pct",
@@ -230,6 +229,16 @@ if not service_df.empty:
         previous_row = previous_df.iloc[0]
 
         for metric in service_metrics:
+            if metric == "request_count" and not (
+                pd.notna(current_row.get("request_count_available"))
+                and pd.notna(previous_row.get("request_count_available"))
+                and bool(current_row.get("request_count_available"))
+                and bool(previous_row.get("request_count_available"))
+            ):
+                continue
+
+            if pd.isna(current_row.get(metric)) or pd.isna(previous_row.get(metric)):
+                continue
 
             current_value = float(
                 current_row.get(metric, 0)

@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 RUN_ID = os.getenv("RUN_ID")
 if not RUN_ID:
     raise RuntimeError("RUN_ID environment variable is required")
+RUN_START_EPOCH = os.getenv("RUN_START_EPOCH")
+RUN_END_EPOCH = os.getenv("RUN_END_EPOCH")
+if not RUN_START_EPOCH or not RUN_END_EPOCH:
+    raise RuntimeError(
+        "RUN_START_EPOCH and RUN_END_EPOCH are required for run-scoped metrics"
+    )
 
 print("===== AiPERF Baseline Intelligence (Enhanced) =====")
 
@@ -55,6 +61,7 @@ def get_trend_analysis(transaction, days=7):
         SELECT LAST("pct95.0") as p95
         FROM "jmeter"
         WHERE "transaction" = '{transaction}' 
+        AND "statut" = 'all'
         AND time > now() - {days}d
         GROUP BY time(1d), "transaction"
         """
@@ -100,14 +107,14 @@ except Exception as e:
     exit(1)
 
 # Read Current Metrics with enhanced data collection
-current_query = """
+current_query = f"""
 SELECT 
-    LAST("pct50.0") as p50,
-    LAST("pct95.0") as p95,
-    LAST("pct99.0") as p99,
-    MAX("pct95.0") as max_p95,
-    MIN("pct95.0") as min_p95
-FROM "jmeter"
+    LAST("p50") as p50,
+    LAST("p95") as p95,
+    LAST("p99") as p99
+FROM "aiperf_transaction_history"
+WHERE time >= {int(RUN_START_EPOCH)}ms
+AND time <= {int(RUN_END_EPOCH)}ms
 GROUP BY "transaction"
 """
 
@@ -136,8 +143,6 @@ for measurement, points in current_result.items():
         current_p95 = row.get("p95")
         current_p50 = row.get("p50")
         current_p99 = row.get("p99")
-        max_p95 = row.get("max_p95")
-        min_p95 = row.get("min_p95")
         
         baseline_p95 = baseline_map.get(transaction)
         
@@ -193,10 +198,7 @@ for measurement, points in current_result.items():
         else:
             print("Current P99  : N/A")
 
-        if (min_p95 is not None) and (max_p95 is not None):
-            print(f"Range        : {min_p95:.2f} - {max_p95:.2f} ms")
-        else:
-            print("Range        : N/A")
+        print("Range        : N/A (run-scoped samples unavailable)")
 
         # Deviation and thresholds
         thr_warn = threshold.get('warning') if isinstance(threshold, dict) else TRANSACTION_THRESHOLDS['default']['warning']
@@ -227,11 +229,6 @@ for measurement, points in current_result.items():
         
         if baseline_p95 is not None:
             point_fields["baseline_p95"] = round(baseline_p95, 2)
-            if max_p95 is not None:
-                point_fields["max_observed"] = round(max_p95, 2)
-            if min_p95 is not None:
-                point_fields["min_observed"] = round(min_p95, 2)
-        
         if trend_info:
             point_fields["trend_pct"] = trend_pct
             point_fields["is_degrading"] = int(is_degrading)

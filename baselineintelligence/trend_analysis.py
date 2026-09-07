@@ -12,8 +12,8 @@ client = InfluxDBClient(host='localhost', port=8086, database='jmeter')
 
 # Query daily mean p95 for last 30 days grouped by transaction
 query = '''
-SELECT MEAN("pct95.0") as p95
-FROM "jmeter"
+SELECT LAST("p95") as p95
+FROM "aiperf_transaction_history"
 WHERE time > now() - 30d
 GROUP BY time(1d), "transaction" fill(none)
 '''

@@ -22,11 +22,15 @@ client.switch_database(INFLUX_DB)
 # =====================================================
 
 run_id = os.getenv("RUN_ID")
+phase = os.getenv("AIPERF_SERVICE_PHASE", "after").lower()
 
 if not run_id:
     raise Exception("RUN_ID environment variable not found")
+if phase not in {"before", "after"}:
+    raise ValueError("AIPERF_SERVICE_PHASE must be 'before' or 'after'")
 
 print(f"Using RUN_ID = {run_id}")
+print(f"Service metric phase = {phase}")
 
 # =====================================================
 # SERVICES
@@ -95,6 +99,7 @@ def get_http_request_metrics(base_url):
                 "count": 0,
                 "avg_ms": 0,
                 "max_ms": 0,
+                "total_time_ms": 0,
                 "available": False
             }
 
@@ -133,6 +138,7 @@ def get_http_request_metrics(base_url):
             "count": round(count, 2),
             "avg_ms": round(avg_ms, 2),
             "max_ms": round(max_time * 1000, 2),
+            "total_time_ms": round(total_time * 1000, 2),
             "available": True
         }
 
@@ -146,6 +152,7 @@ def get_http_request_metrics(base_url):
             "count": 0,
             "avg_ms": 0,
             "max_ms": 0,
+            "total_time_ms": 0,
             "available": False
         }
 
@@ -199,15 +206,45 @@ for service_name, service_url in SERVICES.items():
         service_url
     )
 
-    request_count = http_metrics["count"]
+    request_count = 0.0
+    avg_response_time_ms = 0.0
+    request_count_available = False
+    if phase == "after":
+        before_result = client.query(
+            f"""
+            SELECT LAST(request_counter) AS request_counter,
+                   LAST(total_time_counter_ms) AS total_time_counter_ms
+            FROM aiperf_service_metrics
+            WHERE run_id='{run_id}'
+            AND service_name='{service_name}'
+            AND sample_phase='before'
+            """
+        )
+        before_points = list(before_result.get_points())
+        before_count = float(
+            before_points[0].get("request_counter") or 0
+        ) if before_points else 0.0
+        before_total_time_ms = float(
+            before_points[0].get("total_time_counter_ms") or 0
+        ) if before_points else 0.0
+        count_delta = http_metrics["count"] - before_count
+        total_time_delta_ms = (
+            http_metrics["total_time_ms"] - before_total_time_ms
+        )
+        request_count_available = (
+            http_metrics["available"]
+            and bool(before_points)
+            and count_delta >= 0
+            and total_time_delta_ms >= 0
+        )
+        if request_count_available:
+            request_count = round(count_delta, 2)
+            if request_count > 0:
+                avg_response_time_ms = round(
+                    total_time_delta_ms / request_count, 2
+                )
 
-    avg_response_time_ms = (
-        http_metrics["avg_ms"]
-    )
-
-    max_response_time_ms = (
-        http_metrics["max_ms"]
-    )
+    max_response_time_ms = 0.0
 
     active_requests = get_metric(
         service_url,
@@ -237,7 +274,7 @@ for service_name, service_url in SERVICES.items():
     )
 
     print(
-        f"Max Response MS     : {max_response_time_ms}"
+        "Max Response MS     : N/A (cumulative actuator maximum)"
     )
 
     print(
@@ -262,7 +299,8 @@ for service_name, service_url in SERVICES.items():
 
         "tags": {
             "run_id": run_id,
-            "service_name": service_name
+            "service_name": service_name,
+            "sample_phase": phase
         },
 
         "fields": {
@@ -270,7 +308,11 @@ for service_name, service_url in SERVICES.items():
             "request_count":
                 float(request_count),
             "request_count_available":
-                int(http_metrics.get("available", False)),
+                int(request_count_available),
+            "request_counter":
+                float(http_metrics["count"]),
+            "total_time_counter_ms":
+                float(http_metrics["total_time_ms"]),
 
             "avg_response_time_ms":
                 float(avg_response_time_ms),
