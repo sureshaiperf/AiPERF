@@ -207,7 +207,9 @@ for measurement, points in current_result.items():
             print(f"Deviation    : N/A (no baseline)")
 
         if trend_info:
-            direction = "DOWN" if trend_info["is_degrading"] else "UP"
+            direction = (
+                "DEGRADING" if trend_info["is_degrading"] else "IMPROVING"
+            )
             print(f"Trend (7d)   : {direction} {abs(trend_pct):.2f}% ({trend_info['data_points']} samples)")
 
         print(f"Status       : {status}")

@@ -16,6 +16,7 @@ def _number(value: Any) -> float:
 
 
 def assess_service(row: dict[str, Any]) -> dict[str, Any]:
+    request_count_available = bool(row.get("request_count_available", 0))
     cpu = _number(row.get("process_cpu_usage", row.get("process_cpu")))
     response_time = _number(row.get("avg_response_time_ms"))
     executor = _number(row.get("executor_active"))
@@ -32,7 +33,9 @@ def assess_service(row: dict[str, Any]) -> dict[str, Any]:
         + min(executor, 100) * 0.05,
         100.0,
     )
-    if score >= 75:
+    if not request_count_available:
+        status = "UNAVAILABLE"
+    elif score >= 75:
         status = "CRITICAL"
     elif score >= 45:
         status = "WARNING"
@@ -49,8 +52,10 @@ def assess_service(row: dict[str, Any]) -> dict[str, Any]:
         "active_requests": active,
         "avg_response_time_ms": response_time,
         "executor_active": executor,
+        "request_count_available": request_count_available,
         "reason": (
-            f"CPU={cpu:.2f}%, heap={heap:.2f}%, "
+            ("Request metrics unavailable; " if not request_count_available else "")
+            + f"CPU={cpu:.2f}%, heap={heap:.2f}%, "
             f"GC={gc:.4f}, active requests={active:.2f}, "
             f"response time={response_time:.2f}ms"
         ),
@@ -95,6 +100,9 @@ def persist_service_health(
                         assessment["avg_response_time_ms"]
                     ),
                     "executor_active": float(assessment["executor_active"]),
+                    "request_count_available": int(
+                        assessment["request_count_available"]
+                    ),
                     "reason": str(assessment["reason"]),
                 },
             }

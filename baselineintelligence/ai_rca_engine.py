@@ -107,20 +107,14 @@ svc_records = []
 
 for _, row in svc_df.iterrows():
 
-    svc_records.append(
-        (
-            row["service_name"],
-            "request_count",
-            abs(
-                float(
-                    row.get(
-                        "request_count_variance_pct",
-                        0
-                    )
-                )
+    if int(row.get("request_count_comparable", 0)):
+        svc_records.append(
+            (
+                row["service_name"],
+                "request_count",
+                abs(float(row.get("request_count_variance_pct", 0)))
             )
         )
-    )
 
     svc_records.append(
         (

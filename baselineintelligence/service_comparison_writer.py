@@ -117,8 +117,12 @@ for service in services:
     )
 
     req_variance = 0.0
+    request_count_comparable = int(
+        current.get("request_count_available", 0)
+        and baseline.get("request_count_available", 0)
+    )
 
-    if req_baseline > 0:
+    if request_count_comparable and req_baseline > 0:
 
         req_variance = round(
             (
@@ -266,6 +270,8 @@ for service in services:
 
         "request_count_variance_pct":
             float(req_variance),
+        "request_count_comparable":
+            request_count_comparable,
 
         "avg_rt_baseline":
             float(rt_baseline),
