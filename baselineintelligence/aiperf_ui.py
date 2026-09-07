@@ -64,8 +64,7 @@ try:
 
     query = """
     SELECT *
-    FROM aiperf_ai_insights
-    WHERE insight_type='rca'
+    FROM aiperf_findings_package
     ORDER BY time DESC
     LIMIT 1
     """
@@ -145,16 +144,15 @@ if st.button("🚀 Ask"):
             ):
 
                 response_text = generate_ai_advice(
-                    user_question=question
+                    user_question=question,
+                    requested_run_id=latest_run_id,
                 )
 
                 st.session_state[
                     "gpt_response"
                 ] = response_text
 
-                st.session_state[
-                    "run_id"
-                ] = latest_run_id
+                st.session_state["run_id"] = latest_run_id
 
     except Exception as ex:
 

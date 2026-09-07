@@ -344,7 +344,7 @@ def create_embedding(text):
 # GENERATE AI RESPONSE
 # =====================================================
 
-def generate_ai_advice(user_question=None):
+def generate_ai_advice(user_question=None, requested_run_id=None):
 
     print("\n===================================")
     print("AIPERF GPT COPILOT")
@@ -368,7 +368,7 @@ def generate_ai_advice(user_question=None):
     print("LOADING FINDINGS PACKAGE")
     print("===================================\n")
 
-    requested_run_id = os.getenv("RUN_ID")
+    requested_run_id = requested_run_id or os.getenv("RUN_ID")
     run_id, findings_context = get_latest_findings_package(
         client,
         requested_run_id=requested_run_id,
@@ -434,50 +434,15 @@ def generate_ai_advice(user_question=None):
             f"Embedding Error: {str(ex)}"
         )
 
-    performance_keywords = [
-        "release",
-        "release readiness",
-        "performance",
-        "api",
-        "latency",
-        "throughput",
-        "response",
-        "p95",
-        "p99",
-        "baseline",
-        "risk",
-        "service",
-        "bottleneck",
-        "execution",
-        "regression",
-        "transaction",
-        "memory",
-        "cpu",
-        "thread",
-        "jvm",
-        "anomaly",
-        "capacity",
-        "sla",
-        "availability",
-        "scalability",
-        "reliability",
-        "similar execution"
-    ]
-
-    is_performance_question = any(
-        keyword in user_question.lower()
-        for keyword in performance_keywords
-    )
-
-    if is_performance_question:
-
-        prompt = f"""
+    prompt = f"""
 You are AiPERF Copilot.
 
-You are an expert Chief Performance Architect.
+You are an expert Chief Performance Architect for an AI-native performance
+engineering platform.
 
-Analyze the execution findings package and answer
-using evidence from the package.
+Answer the user's question using only the execution findings package below.
+This is not a general document summarizer and must not ask the user to provide
+another document when the package contains evidence.
 
 RUN ID:
 {run_id}
@@ -510,19 +475,6 @@ Do not invent metrics.
 For every important conclusion, name the relevant transaction or service and metric.
 Distinguish observed evidence from inference. If evidence is missing, say so.
 Respond in markdown with concise tables where they improve readability.
-"""
-
-    else:
-
-        prompt = f"""
-You are AiPERF Copilot.
-
-User Question:
-{user_question}
-
-Answer naturally.
-
-Provide only the answer.
 """
 
     print("\nCalling AI Engine...\n")
