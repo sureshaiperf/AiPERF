@@ -143,10 +143,16 @@ if st.button("🚀 Ask"):
                 "AiPERF is analyzing execution data..."
             ):
 
+                st.session_state.pop("gpt_response", None)
                 response_text = generate_ai_advice(
                     user_question=question,
                     requested_run_id=latest_run_id,
                 )
+                if not response_text or not response_text.strip():
+                    raise RuntimeError(
+                        "AiPERF returned an empty response. "
+                        "Check the model endpoint and Jenkins findings package."
+                    )
 
                 st.session_state[
                     "gpt_response"

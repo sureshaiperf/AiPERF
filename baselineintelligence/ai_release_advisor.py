@@ -155,12 +155,23 @@ def call_model(
 
     data = response.json()
 
-    if "choices" not in data:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
         raise Exception(
-        f"Unexpected response from model: {data}"
-    )
+            f"Unexpected response from model: {data}"
+        )
 
-    return data["choices"][0]["message"]["content"]
+    message = choices[0].get("message", {})
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict)
+        )
+    if not isinstance(content, str) or not content.strip():
+        raise Exception("Model returned an empty response")
+    return content.strip()
 
 # =====================================================
 # GPT FAILOVER LOGIC
