@@ -10,6 +10,28 @@ from typing import Any
 from influxdb import InfluxDBClient
 
 
+def parse_findings_package(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise RuntimeError("Findings package contains invalid JSON")
+
+    candidates = [value]
+    if "\\n" in value:
+        candidates.append(value.encode("utf-8").decode("unicode_escape"))
+
+    for candidate in candidates:
+        try:
+            package = json.loads(candidate)
+        except json.JSONDecodeError:
+            try:
+                package = ast.literal_eval(candidate)
+            except (SyntaxError, ValueError):
+                continue
+        if isinstance(package, dict):
+            return package
+
+    raise RuntimeError("Findings package contains invalid JSON")
+
+
 def get_latest_package(client: Any, run_id: str) -> dict[str, Any]:
     query = (
         'SELECT * FROM "aiperf_findings_package" '
@@ -22,16 +44,7 @@ def get_latest_package(client: Any, run_id: str) -> dict[str, Any]:
     findings_json = rows[0].get("findings_json")
     if not findings_json:
         raise RuntimeError(f"Findings package for RUN_ID {run_id} has no findings_json")
-    try:
-        package = json.loads(findings_json)
-    except (TypeError, json.JSONDecodeError):
-        try:
-            package = ast.literal_eval(findings_json)
-        except (SyntaxError, ValueError) as exc:
-            raise RuntimeError("Findings package contains invalid JSON") from exc
-    if not isinstance(package, dict):
-        raise RuntimeError("Findings package JSON must be an object")
-    return package
+    return parse_findings_package(findings_json)
 
 
 def evaluate_release(package: dict[str, Any]) -> tuple[bool, str]:
