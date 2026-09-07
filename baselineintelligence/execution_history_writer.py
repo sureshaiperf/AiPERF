@@ -184,6 +184,12 @@ json_body = [{
     
     "fields": {
         "run_id": run_id,
+        "run_start_epoch": int(run_start_epoch),
+        "run_end_epoch": int(run_end_epoch),
+        "duration_seconds": round(
+            (int(run_end_epoch) - int(run_start_epoch)) / 1000,
+            3,
+        ),
         "build_number": int(build_number) if str(build_number).isdigit() else 0,
         "avg_rt": float(avg_rt),
         "p90": float(p90),
