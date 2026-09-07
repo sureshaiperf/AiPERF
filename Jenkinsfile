@@ -24,8 +24,20 @@ pipeline {
             steps {
                 script {
                     env.RUN_ID = "RUN_${env.BUILD_NUMBER}_${new Date().format('yyyyMMdd_HHmmss')}"
+                    env.RUN_START_EPOCH = System.currentTimeMillis().toString()
                 }
-                echo "RUN_ID=${env.RUN_ID}"
+                echo "RUN_ID=${env.RUN_ID}, RUN_START_EPOCH=${env.RUN_START_EPOCH}"
+            }
+        }
+
+        stage('Capture Service Baseline') {
+            steps {
+                bat '''
+                cd /d "%INTELLIGENCE_DIR%"
+                set "AIPERF_SERVICE_PHASE=before"
+                "%PYTHON%" actuator_metrics_collector.py
+                if errorlevel 1 exit /b 1
+                '''
             }
         }
 
@@ -43,10 +55,21 @@ pipeline {
             }
         }
 
+        stage('Capture Run End') {
+            steps {
+                script {
+                    env.RUN_END_EPOCH = System.currentTimeMillis().toString()
+                }
+                echo "RUN_END_EPOCH=${env.RUN_END_EPOCH}"
+            }
+        }
+
         stage('Collect Execution Data') {
             steps {
                 bat '''
                 cd /d "%INTELLIGENCE_DIR%"
+                set "AIPERF_SERVICE_PHASE=after"
+                set "JTL_PATH=%WORKSPACE%\\logs\\results.jtl"
                 "%PYTHON%" actuator_metrics_collector.py
                 if errorlevel 1 exit /b 1
 

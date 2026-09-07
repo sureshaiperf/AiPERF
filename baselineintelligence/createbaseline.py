@@ -7,8 +7,8 @@ client = InfluxDBClient(
 )
 
 query = '''
-SELECT LAST("pct95.0") AS p95
-FROM "jmeter"
+SELECT LAST("p95") AS p95
+FROM "aiperf_transaction_history"
 GROUP BY "transaction"
 '''
 

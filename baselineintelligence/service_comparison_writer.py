@@ -1,4 +1,5 @@
 import os
+import math
 from influxdb import InfluxDBClient
 
 # =====================================================
@@ -14,6 +15,24 @@ client = InfluxDBClient(
     port=INFLUX_PORT,
     database=INFLUX_DB
 )
+
+
+def _number(value, default=0.0):
+    """Normalize missing Influx fields without turning them into exceptions."""
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _available(value):
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    if isinstance(value, float) and math.isnan(value):
+        return False
+    return bool(value)
 
 # =====================================================
 # RUN ID
@@ -108,18 +127,13 @@ for service in services:
     # REQUEST COUNT
     # ======================================
 
-    req_current = float(
-        current.get("request_count", 0)
-    )
-
-    req_baseline = float(
-        baseline.get("request_count", 0)
-    )
+    req_current = _number(current.get("request_count"))
+    req_baseline = _number(baseline.get("request_count"))
 
     req_variance = 0.0
     request_count_comparable = int(
-        current.get("request_count_available", 0)
-        and baseline.get("request_count_available", 0)
+        _available(current.get("request_count_available"))
+        and _available(baseline.get("request_count_available"))
     )
 
     if request_count_comparable and req_baseline > 0:
@@ -139,19 +153,8 @@ for service in services:
     # AVG RESPONSE TIME
     # ======================================
 
-    rt_current = float(
-        current.get(
-            "avg_response_time_ms",
-            0
-        )
-    )
-
-    rt_baseline = float(
-        baseline.get(
-            "avg_response_time_ms",
-            0
-        )
-    )
+    rt_current = _number(current.get("avg_response_time_ms"))
+    rt_baseline = _number(baseline.get("avg_response_time_ms"))
 
     rt_variance = 0.0
 
@@ -172,19 +175,8 @@ for service in services:
     # HEAP %
     # ======================================
 
-    heap_current = float(
-        current.get(
-            "heap_pct",
-            0
-        )
-    )
-
-    heap_baseline = float(
-        baseline.get(
-            "heap_pct",
-            0
-        )
-    )
+    heap_current = _number(current.get("heap_pct"))
+    heap_baseline = _number(baseline.get("heap_pct"))
 
     heap_variance = 0.0
 
@@ -205,19 +197,8 @@ for service in services:
     # GC OVERHEAD
     # ======================================
 
-    gc_current = float(
-        current.get(
-            "gc_overhead",
-            0
-        )
-    )
-
-    gc_baseline = float(
-        baseline.get(
-            "gc_overhead",
-            0
-        )
-    )
+    gc_current = _number(current.get("gc_overhead"))
+    gc_baseline = _number(baseline.get("gc_overhead"))
 
     gc_variance = 0.0
 

@@ -2,12 +2,15 @@ import os
 import sys
 
 from influxdb import InfluxDBClient
+from jmeter_run_metrics import read_jtl
 
 # =====================================================
 # RUN ID
 # =====================================================
 
 run_id = None
+run_start_epoch = os.getenv("RUN_START_EPOCH")
+run_end_epoch = os.getenv("RUN_END_EPOCH")
 
 if len(sys.argv) > 1:
     run_id = sys.argv[1]
@@ -17,6 +20,11 @@ else:
 if not run_id:
     raise Exception(
         "RUN_ID not provided via argument or environment variable"
+    )
+
+if not run_start_epoch or not run_end_epoch:
+    raise RuntimeError(
+        "RUN_START_EPOCH and RUN_END_EPOCH are required for run-scoped metrics"
     )
 
 print(f"Using RUN_ID = {run_id}")
@@ -53,19 +61,42 @@ if list(dup_result.get_points()):
 
     sys.exit(0)
 
+jtl_path = os.getenv("JTL_PATH")
+if jtl_path and os.path.exists(jtl_path):
+    metrics = read_jtl(jtl_path)
+    records = []
+    for transaction, data in metrics.items():
+        if transaction == "all":
+            continue
+        records.append(
+            {
+                "measurement": "aiperf_transaction_history",
+                "tags": {"run_id": run_id, "transaction": transaction},
+                "fields": data,
+            }
+        )
+    if records:
+        client.write_points(records)
+    print(f"Transactions Captured : {len(records)}")
+    print("Transaction History Written Successfully.")
+    sys.exit(0)
+
 # =====================================================
 # FETCH TRANSACTION METRICS
 # =====================================================
 
-query = """
+query = f"""
 SELECT
     LAST(avg) AS avg_rt,
     LAST(count) AS samples,
     LAST(countError) AS errors,
+    LAST("pct50.0") AS p50,
     LAST("pct95.0") AS p95,
     LAST("pct99.0") AS p99
 FROM jmeter
-WHERE transaction != 'all'
+WHERE time >= {int(run_start_epoch)}ms
+AND time <= {int(run_end_epoch)}ms
+AND transaction != 'all'
 AND transaction != 'internal'
 AND statut='all'
 GROUP BY transaction

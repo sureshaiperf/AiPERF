@@ -76,13 +76,13 @@ def run_forecast(days_history=90, horizon=7):
     # Query daily aggregates for relevant metrics
     query = f"""
 SELECT
-  MEAN("mean") AS avg_rt,
-  MEAN("pct90.0") AS p90,
-  MEAN("pct95.0") AS p95,
-  MEAN("pct99.0") AS p99,
-  SUM("count") AS total_count,
-  SUM("countError") AS error_count
-FROM "jmeter"
+  LAST("avg_rt") AS avg_rt,
+  LAST("p90") AS p90,
+  LAST("p95") AS p95,
+  LAST("p99") AS p99,
+  SUM("samples") AS total_count,
+  SUM("errors") AS error_count
+FROM "aiperf_transaction_history"
 WHERE time > now() - {days_history}d
 GROUP BY time(1d), "transaction" fill(none)
 """
