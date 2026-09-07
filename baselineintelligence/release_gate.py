@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import ast
 from typing import Any
 
 from influxdb import InfluxDBClient
@@ -23,8 +24,11 @@ def get_latest_package(client: Any, run_id: str) -> dict[str, Any]:
         raise RuntimeError(f"Findings package for RUN_ID {run_id} has no findings_json")
     try:
         package = json.loads(findings_json)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Findings package contains invalid JSON") from exc
+    except (TypeError, json.JSONDecodeError):
+        try:
+            package = ast.literal_eval(findings_json)
+        except (SyntaxError, ValueError) as exc:
+            raise RuntimeError("Findings package contains invalid JSON") from exc
     if not isinstance(package, dict):
         raise RuntimeError("Findings package JSON must be an object")
     return package
