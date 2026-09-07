@@ -1,10 +1,12 @@
 """Streamlit dashboard for the AiPERF findings and Copilot workflow."""
 
 import json
+from datetime import datetime, timezone
 import streamlit as st
 from influxdb import InfluxDBClient
 
 from ai_release_advisor import generate_ai_advice
+from release_gate import parse_findings_package
 
 
 st.set_page_config(
@@ -33,6 +35,28 @@ def latest_findings():
     return rows[0] if rows else {}
 
 
+def execution_timeline(run_id):
+    query = (
+        'SELECT * FROM "aiperf_execution_history" '
+        f"WHERE run_id='{run_id}' ORDER BY time DESC LIMIT 1"
+    )
+    rows = list(client.query(query).get_points())
+    return rows[0] if rows else {}
+
+
+def format_epoch(value):
+    try:
+        epoch = float(value)
+        if epoch < 10_000_000_000:
+            epoch *= 1000
+        return datetime.fromtimestamp(
+            epoch / 1000,
+            tz=timezone.utc,
+        ).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "Unavailable"
+
+
 findings = {}
 findings_error = None
 try:
@@ -43,11 +67,18 @@ except Exception as exc:
 latest_run_id = findings.get("run_id", "Unavailable")
 if findings.get("findings_json"):
     try:
-        package = json.loads(findings["findings_json"])
+        package = parse_findings_package(findings["findings_json"])
         package["run_id"] = findings.get("run_id", package.get("run_id"))
         findings = package
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (TypeError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
         findings_error = f"Findings package JSON is invalid: {exc}"
+
+timeline = {}
+if latest_run_id != "Unavailable":
+    try:
+        timeline = execution_timeline(latest_run_id)
+    except Exception as exc:
+        findings_error = findings_error or f"Execution timeline unavailable: {exc}"
 
 st.markdown(
     """
@@ -81,7 +112,11 @@ with st.sidebar:
     ):
         st.write(f"✅ {feature}")
     st.divider()
-    st.caption("Evidence source: InfluxDB findings package")
+    st.caption("Evidence flow")
+    st.caption("1. InfluxDB run metrics")
+    st.caption("2. AiPERF comparisons, anomalies, RCA, and readiness")
+    st.caption("3. Findings package")
+    st.caption("4. AI explanation and recommendations")
 
 st.markdown(
     f"""
@@ -118,6 +153,15 @@ run_columns[3].markdown(
     f'<div class="card"><div class="label">Anomaly status</div><div class="value">{findings.get("anomaly_summary", {}).get("status", "Unavailable")}</div></div>',
     unsafe_allow_html=True,
 )
+timeline_columns = st.columns(3)
+timeline_columns[0].metric("Start time", format_epoch(timeline.get("run_start_epoch")))
+timeline_columns[1].metric("End time", format_epoch(timeline.get("run_end_epoch")))
+timeline_columns[2].metric(
+    "Duration",
+    f'{float(timeline["duration_seconds"]):,.3f} s'
+    if timeline.get("duration_seconds") is not None
+    else "Unavailable",
+)
 
 st.divider()
 
@@ -152,7 +196,7 @@ with st.form("aiperf_question_form", clear_on_submit=False):
         height=90,
         help="The question is answered using only the selected run's AiPERF findings.",
     )
-    ask = st.form_submit_button("🚀 Analyze execution", type="primary")
+    ask = st.form_submit_button("Analyze execution", type="primary")
 
 if ask:
     question = st.session_state["question_input"].strip()
