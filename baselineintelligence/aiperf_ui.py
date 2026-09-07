@@ -92,6 +92,10 @@ st.markdown(
             padding: 1rem; background: #ffffff; min-height: 92px; }
     .label { color: #64748b; font-size: .82rem; }
     .value { color: #17365d; font-size: 1.25rem; font-weight: 700; }
+    .timeline-card { border: 1px solid #dbe3ef; border-radius: 10px;
+                     padding: .75rem 1rem; background: #f8fafc; }
+    .timeline-value { color: #17365d; font-size: .98rem; font-weight: 600;
+                      white-space: nowrap; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -154,18 +158,30 @@ run_columns[3].markdown(
     unsafe_allow_html=True,
 )
 timeline_columns = st.columns(3)
-timeline_columns[0].metric("Start time", format_epoch(timeline.get("run_start_epoch")))
-timeline_columns[1].metric("End time", format_epoch(timeline.get("run_end_epoch")))
-timeline_columns[2].metric(
-    "Duration",
-    f'{float(timeline["duration_seconds"]):,.3f} s'
-    if timeline.get("duration_seconds") is not None
-    else "Unavailable",
+timeline_values = (
+    ("Start time", format_epoch(timeline.get("run_start_epoch"))),
+    ("End time", format_epoch(timeline.get("run_end_epoch"))),
+    (
+        "Duration",
+        f'{float(timeline["duration_seconds"]):,.3f} s'
+        if timeline.get("duration_seconds") is not None
+        else "Unavailable",
+    ),
 )
+for column, (label, value) in zip(timeline_columns, timeline_values):
+    column.markdown(
+        f'<div class="timeline-card"><div class="label">{label}</div>'
+        f'<div class="timeline-value">{value}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 
-st.subheader("Ask AiPERF about this execution")
+st.subheader("Ask AiPERF Copilot")
+st.caption(
+    "Ask about performance evidence, release readiness, regressions, risks, "
+    "root causes, anomalies, services, or recommended next actions."
+)
 quick_questions = [
     "Can I release this build?",
     "Summarize this execution",
@@ -196,7 +212,7 @@ with st.form("aiperf_question_form", clear_on_submit=False):
         height=90,
         help="The question is answered using only the selected run's AiPERF findings.",
     )
-    ask = st.form_submit_button("Analyze execution", type="primary")
+    ask = st.form_submit_button("Ask Copilot", type="primary")
 
 if ask:
     question = st.session_state["question_input"].strip()
@@ -228,4 +244,4 @@ if "gpt_response" in st.session_state:
     )
     st.markdown(st.session_state["gpt_response"])
 else:
-    st.info("Choose a quick question or enter your own question, then select Analyze execution.")
+    st.info("Choose a quick question or enter your own question, then select Ask Copilot.")
