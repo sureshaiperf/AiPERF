@@ -222,7 +222,7 @@ if ask:
         st.error("No run-scoped findings are available. Run Jenkins before asking AiPERF.")
     else:
         try:
-            with st.spinner(f"Analyzing {latest_run_id} with AiPERF evidence..."):
+            with st.spinner(f"Asking Copilot about {latest_run_id}..."):
                 response_text = generate_ai_advice(
                     user_question=question,
                     requested_run_id=latest_run_id,
