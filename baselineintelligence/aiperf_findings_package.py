@@ -43,7 +43,10 @@ try:
         store_finding,
     )
     from .evidence_orchestrator import prepare_evidence
-    from .historical_findings_search import find_similar_findings
+    from .historical_findings_search import (
+        find_similar_findings,
+        summarize_similar_outcomes,
+    )
 except ImportError:
     from anomaly_detection import OUTPUT_MEASUREMENT
     from bottleneck_intelligence import (
@@ -64,7 +67,10 @@ except ImportError:
         store_finding,
     )
     from evidence_orchestrator import prepare_evidence
-    from historical_findings_search import find_similar_findings
+    from historical_findings_search import (
+        find_similar_findings,
+        summarize_similar_outcomes,
+    )
 
 DB_HOST = os.getenv("INFLUX_HOST", "localhost")
 DB_PORT = int(os.getenv("INFLUX_PORT", "8086"))
@@ -178,6 +184,38 @@ def get_anomalies(run_id: str) -> list[dict[str, Any]]:
         f'SELECT * FROM "{OUTPUT_MEASUREMENT}" '
         f"WHERE run_id='{_safe_run_id(run_id)}'"
     )
+
+
+def get_observed_release_outcome(run_id: str) -> dict[str, Any] | None:
+    """Return the latest observed production outcome for the selected run."""
+    rows = _query_points(
+        'SELECT * FROM "aiperf_release_outcome" '
+        f"WHERE run_id='{_safe_run_id(run_id)}' ORDER BY time DESC LIMIT 1"
+    )
+    if not rows:
+        return None
+    row = dict(rows[0])
+    outcome = _text(row.get("outcome"), "NOT_OBSERVED").upper()
+    return {
+        "run_id": _safe_run_id(row.get("run_id") or run_id),
+        "release_decision": _text(row.get("release_decision"), "UNKNOWN").upper(),
+        "outcome": outcome,
+        "production_status": _text(
+            row.get("production_status"), "NOT_OBSERVED"
+        ).upper(),
+        "incident_count": max(0, int(_number(row.get("incident_count")))),
+        "rollback_flag": row.get("rollback_flag") in (1, True, "1", "true", "True"),
+        "production_p95": _number(row.get("production_p95")),
+        "production_error_rate": _number(row.get("production_error_rate")),
+        "observation_window_days": max(
+            0, int(_number(row.get("observation_window_days")))
+        ),
+        "observed_at": _text(row.get("observed_at") or row.get("time")),
+        "notes": _text(row.get("notes")),
+        "source": _text(row.get("source"), "MANUAL"),
+        "schema_version": _text(row.get("schema_version"), "1.0"),
+        "outcome_observed": outcome not in {"", "UNKNOWN", "NOT_OBSERVED"},
+    }
 
 
 def build_anomaly_summary(anomalies: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -549,6 +587,7 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
     persisted_health = get_service_health_records(selected_run)
     service_health = build_service_health(service_impacts, persisted_health)
     ai_insights = get_ai_insights(selected_run)
+    observed_release_outcome = get_observed_release_outcome(selected_run)
     top_regressions = get_top_regressions(top_variances)
     top_improvements = get_top_improvements(top_variances)
     risk = calculate_risk(top_regressions, anomaly_summary)
@@ -580,7 +619,7 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
         "risk": risk,
         "release_impact": release_impact,
         "release_decision": release_impact,
-        "observed_release_outcome": None,
+        "observed_release_outcome": observed_release_outcome,
         "top_regressions": top_regressions,
         "top_improvements": top_improvements,
         "service_health": service_health,
@@ -602,6 +641,8 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
         "historical_evidence": [],
         "historical_findings": [],
         "previous_release_outcomes": [],
+        "similar_historical_findings": [],
+        "historical_outcome_summary": summarize_similar_outcomes([]),
         "evidence_provenance": {
             "current_findings": MEASUREMENT_NAME,
             "similar_executions": "aiperf_similar_execution",
@@ -676,6 +717,12 @@ def persist_findings_package(package: Mapping[str, Any]) -> None:
             "package_version": _text(package.get("package_version"), FINDINGS_PACKAGE_VERSION),
             "summary": _text(package.get("executive_summary")),
             "confidence_score": _number((package.get("confidence") or {}).get("overall")),
+            "historical_observed_matches": int(_number(
+                (package.get("historical_outcome_summary") or {}).get("observed_matches")
+            )),
+            "historical_success_rate": _number(
+                (package.get("historical_outcome_summary") or {}).get("success_rate")
+            ),
             "findings_json": findings_json,
         },
     }
@@ -684,32 +731,102 @@ def persist_findings_package(package: Mapping[str, Any]) -> None:
         raise RuntimeError("InfluxDB rejected the findings package")
 
 
-def enrich_knowledge_layer(package: Mapping[str, Any]) -> list[str]:
+def enrich_knowledge_layer(package: dict[str, Any]) -> list[str]:
+    """Persist the embedding and attach outcome-aware historical matches."""
     warnings: list[str] = []
     try:
         text = package_to_text(package)
         vector = create_embedding(text)
-        if vector:
-            # A predicted decision is not an observed production outcome.
-            store_finding(
-                client,
-                _safe_run_id(package.get("run_id")),
-                text,
-                vector,
-                risk_level=_text((package.get("risk") or {}).get("level"), "UNKNOWN"),
-                recommendations=package.get("recommended_actions", []),
-                outcome="NOT_OBSERVED",
+        if not vector:
+            warnings.append(
+                "Embedding generation was skipped because no vector was returned."
             )
-            find_similar_findings(
-                client,
-                _safe_run_id(package.get("run_id")),
-                query_vector=vector,
-            )
-        else:
-            warnings.append("Embedding generation was skipped because no vector was returned.")
+            return warnings
+
+        run_id = _safe_run_id(package.get("run_id"))
+        observed = package.get("observed_release_outcome") or {}
+        observed_outcome = _text(observed.get("outcome"), "NOT_OBSERVED")
+
+        store_finding(
+            client,
+            run_id,
+            text,
+            vector,
+            risk_level=_text((package.get("risk") or {}).get("level"), "UNKNOWN"),
+            recommendations=package.get("recommended_actions", []),
+            outcome=observed_outcome,
+        )
+
+        similar = find_similar_findings(
+            client,
+            run_id,
+            query_vector=vector,
+        )
+        package["similar_historical_findings"] = _unique_by_run(similar, run_id)
+        package["historical_outcome_summary"] = summarize_similar_outcomes(
+            package["similar_historical_findings"]
+        )
+        package["evidence_provenance"]["historical_outcomes"] = (
+            "aiperf_release_outcome"
+        )
+        _apply_outcome_confidence(package)
     except Exception as exc:
         warnings.append(f"Knowledge-layer enrichment: {type(exc).__name__}: {exc}")
     return warnings
+
+
+def _apply_outcome_confidence(package: dict[str, Any]) -> None:
+    """Calibrate package confidence using observed similar-run outcomes.
+
+    Outcome evidence can strengthen confidence only when at least three similar
+    runs have observed outcomes. It can never replace current-run evidence.
+    """
+    confidence = dict(package.get("confidence") or {})
+    summary = dict(package.get("historical_outcome_summary") or {})
+    observed = int(_number(summary.get("observed_matches")))
+    base = _number(confidence.get("overall"))
+
+    if observed <= 0:
+        confidence.setdefault("limitations", []).append(
+            "No observed outcomes were available among similar historical runs."
+        )
+        confidence["outcome_evidence"] = {
+            "observed_matches": 0,
+            "coverage": 0.0,
+            "contribution": 0.0,
+        }
+        package["confidence"] = confidence
+        return
+
+    total = max(1, int(_number(summary.get("total_similar_matches"))))
+    coverage = min(1.0, observed / total)
+    sample_strength = min(1.0, observed / 5.0)
+    weighted_success = _number(summary.get("weighted_success_rate")) / 100.0
+    outcome_signal = min(1.0, coverage * sample_strength)
+    contribution = 0.15 * outcome_signal
+    calibrated = min(1.0, base * (1.0 - contribution) + weighted_success * contribution)
+
+    confidence["overall"] = round(calibrated, 3)
+    confidence["level"] = (
+        "HIGH" if calibrated >= 0.75 else "MEDIUM" if calibrated >= 0.45 else "LOW"
+    )
+    confidence.setdefault("basis", {})["historical_outcomes"] = round(
+        outcome_signal, 3
+    )
+    confidence["outcome_evidence"] = {
+        "observed_matches": observed,
+        "total_matches": total,
+        "coverage": round(coverage, 3),
+        "sample_strength": round(sample_strength, 3),
+        "weighted_success_rate": round(weighted_success, 3),
+        "contribution": round(contribution, 3),
+    }
+    if observed < 3:
+        confidence.setdefault("limitations", []).append(
+            "Historical outcome confidence is LOW because fewer than three "
+            "similar runs have observed outcomes."
+        )
+    package["confidence"] = confidence
 
 
 def _print_summary(package: Mapping[str, Any]) -> None:
@@ -727,6 +844,12 @@ def _print_summary(package: Mapping[str, Any]) -> None:
     print(f"Correlation Class   : {correlation.get('classification')}")
     print(f"Causal Confidence   : {correlation.get('confidence_level')} ({correlation.get('confidence')})")
     print(f"Package Confidence  : {(package.get('confidence') or {}).get('level')} ({(package.get('confidence') or {}).get('overall')})")
+    outcome_summary = package.get("historical_outcome_summary") or {}
+    print(
+        "Historical Outcomes : "
+        f"{outcome_summary.get('observed_matches', 0)} observed; "
+        f"success rate {outcome_summary.get('success_rate', 0.0)}%"
+    )
     print("\nEXECUTIVE SUMMARY")
     print("-----------------------------")
     print(package.get("executive_summary", ""))
