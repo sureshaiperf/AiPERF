@@ -39,6 +39,7 @@ DEFAULT_MODEL = os.getenv("EMBEDDING_MODEL", "text-embeddings")
 DEFAULT_TIMEOUT = int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "45"))
 DEFAULT_MAX_CHARS = int(os.getenv("AIPERF_EMBEDDING_MAX_CHARS", "12000"))
 DEFAULT_MAX_FINDINGS = int(os.getenv("AIPERF_EMBEDDING_LOAD_LIMIT", "1000"))
+EXPECTED_DIMENSIONS = int(os.getenv("AIPERF_EMBEDDING_DIMENSIONS", "736"))
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -115,6 +116,13 @@ def _response_error(response: Any) -> RuntimeError:
 
 def _extract_vector(payload: Any) -> list[float]:
     """Extract one vector from supported embedding API response formats."""
+    direct_vector = _finite_vector(payload)
+    if direct_vector:
+        return direct_vector
+    if isinstance(payload, list) and payload:
+        first_vector = _finite_vector(payload[0])
+        if first_vector:
+            return first_vector
     if not isinstance(payload, Mapping):
         return []
 
@@ -232,6 +240,12 @@ def create_embedding(
         raise RuntimeError(
             "Embedding API response did not contain a valid numeric vector; "
             f"top-level keys={keys}"
+        )
+
+    if EXPECTED_DIMENSIONS > 0 and len(vector) != EXPECTED_DIMENSIONS:
+        raise RuntimeError(
+            "Embedding dimension validation failed: "
+            f"expected={EXPECTED_DIMENSIONS}, actual={len(vector)}"
         )
 
     LOGGER.info(

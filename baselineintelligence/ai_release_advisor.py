@@ -5,6 +5,8 @@
 from dotenv import load_dotenv
 from influxdb import InfluxDBClient
 
+import json
+import hashlib
 import requests
 import os
 import re
@@ -13,8 +15,16 @@ from datetime import datetime, timedelta, timezone
 
 try:
     from .evidence_orchestrator import prepare_evidence
+    from .embeddings_knowledge_layer import (
+        create_embedding as create_knowledge_embedding,
+        package_to_text,
+    )
 except ImportError:
     from evidence_orchestrator import prepare_evidence
+    from embeddings_knowledge_layer import (
+        create_embedding as create_knowledge_embedding,
+        package_to_text,
+    )
 
 
 def print_console(value=""):
@@ -62,6 +72,11 @@ EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
     "text-embedding-3-large"
 )
+
+AI_INSIGHTS_MEASUREMENT = os.getenv("AIPERF_AI_INSIGHTS_MEASUREMENT", "aiperf_ai_insights")
+FORCE_GPT_REFRESH = os.getenv("AIPERF_FORCE_GPT_REFRESH", "false").strip().lower() in {
+    "1", "true", "yes", "y"
+}
 
 # =====================================================
 # VALIDATION
@@ -240,6 +255,89 @@ def call_gpt(prompt):
     )
 
 # =====================================================
+# FINDINGS JSON NORMALIZATION
+# =====================================================
+def normalize_escaped_json_whitespace(value):
+    """Repair legacy escaped whitespace found outside JSON strings."""
+    if not isinstance(value, str):
+        return value
+
+    output = []
+    index = 0
+    in_string = False
+    escaped = False
+
+    while index < len(value):
+        character = value[index]
+
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+            continue
+
+        if character == "\\" and index + 1 < len(value):
+            code = value[index + 1]
+            replacements = {"n": "\n", "r": "\r", "t": "\t"}
+            if code in replacements:
+                output.append(replacements[code])
+                index += 2
+                continue
+
+        output.append(character)
+        index += 1
+
+    return "".join(output)
+
+
+def parse_findings_package(value):
+    """Return a validated findings dictionary and repair status."""
+    if isinstance(value, dict):
+        return value, False
+    if not isinstance(value, str):
+        raise TypeError(
+            "Unsupported findings package type: "
+            f"{type(value).__name__}"
+        )
+
+    try:
+        parsed = json.loads(value)
+        repaired = False
+    except json.JSONDecodeError as initial_error:
+        normalized = normalize_escaped_json_whitespace(value)
+        if normalized == value:
+            raise ValueError(
+                "Findings JSON parse failed and no legacy repair applied: "
+                f"{initial_error}"
+            ) from initial_error
+        try:
+            parsed = json.loads(normalized)
+            repaired = True
+        except json.JSONDecodeError as normalized_error:
+            raise ValueError(
+                "Findings JSON invalid after legacy repair. "
+                f"Initial: {initial_error}; repaired: {normalized_error}"
+            ) from normalized_error
+
+    if not isinstance(parsed, dict):
+        raise TypeError(
+            "Findings package JSON root must be an object, got "
+            f"{type(parsed).__name__}"
+        )
+    return parsed, repaired
+
+# =====================================================
 # READ FINDINGS PACKAGE
 # =====================================================
 
@@ -324,64 +422,50 @@ def get_run_catalog(client, date_text=None):
 
 
 # =====================================================
-# EMBEDDING PLACEHOLDER
-# FUTURE KNOWLEDGE LAYER
-# =====================================================
-
-def create_embedding(text):
-
-    if (
-        not EMBEDDING_API_URL
-        or not EMBEDDING_API_KEY
-        or not EMBEDDING_MODEL
-    ):
-
-        print(
-            "Embedding configuration not found. "
-            "Skipping embedding generation."
-        )
-
-        return None
-
-    try:
-
-        payload = {
-            "model": EMBEDDING_MODEL,
-            "input": text
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {EMBEDDING_API_KEY}"
-        }
-
-        response = requests.post(
-            EMBEDDING_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
-        response.raise_for_status()
-
-        print(
-            "Embedding generated successfully."
-        )
-
-        return response.json()
-
-    except Exception as ex:
-
-        print(
-            f"Embedding Error: {str(ex)}"
-        )
-
-        return None
-
-
-# =====================================================
 # BUILD GPT CONTEXT
 # =====================================================
+
+
+def _escape_influx_string(value):
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def build_request_id(run_id, question):
+    normalized_question = " ".join(str(question).split()).casefold()
+    source = f"{run_id}|{normalized_question}"
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def get_existing_ai_response(client, request_id):
+    safe_request_id = _escape_influx_string(request_id)
+    query = (
+        f'SELECT "insight_text" FROM "{AI_INSIGHTS_MEASUREMENT}" '
+        f"WHERE request_id='{safe_request_id}' ORDER BY time DESC LIMIT 1"
+    )
+    rows = list(client.query(query).get_points())
+    if not rows:
+        return None
+    response = rows[0].get("insight_text")
+    return str(response).strip() if response else None
+
+
+def persist_ai_response(client, run_id, request_id, question, response_text):
+    point = {
+        "measurement": AI_INSIGHTS_MEASUREMENT,
+        "tags": {
+            "run_id": str(run_id),
+            "request_id": request_id,
+            "insight_type": "gpt_release_advisor",
+        },
+        "fields": {
+            "question": str(question),
+            "insight_text": str(response_text),
+            "question_hash": request_id,
+        },
+    }
+    written = client.write_points([point])
+    if written is False:
+        raise RuntimeError("InfluxDB rejected the GPT response")
 
 
 # =====================================================
@@ -464,22 +548,25 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
     # =====================================================
 
     try:
-
+        parsed_findings, repaired = parse_findings_package(findings_context)
+        embedding_source = parsed_findings
         findings_context = json.dumps(
-            json.loads(findings_context),
-            indent=2
+            parsed_findings,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
         )
-
-        print(
-            "Findings package successfully formatted."
-        )
-
-    except Exception:
-
-        print(
-            "Findings package is not valid JSON. "
-            "Proceeding with raw text."
-        )
+        if repaired:
+            print("Legacy escaped JSON whitespace normalized successfully.")
+        print("FINDINGS JSON STATUS : VALID")
+        print(f"FINDINGS ROOT TYPE   : {type(parsed_findings).__name__}")
+        print("EVIDENCE MODE        : STRUCTURED")
+    except Exception as exc:
+        embedding_source = findings_context
+        print("FINDINGS JSON STATUS : INVALID")
+        print(f"FINDINGS PARSE ERROR : {type(exc).__name__}: {exc}")
+        print("EVIDENCE MODE        : DEGRADED_RAW_TEXT")
+        print("Proceeding with raw findings text for resilience.")
 
     # GPT receives the bounded evidence contract, never raw metric rows from
     # the persisted findings package.
@@ -487,8 +574,20 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
         client, str(run_id), findings_context
     )
 
-    if not user_question:
-        user_question = "Can I release this build?"
+    if not isinstance(user_question, str) or not user_question.strip():
+        user_question = (
+        "Analyze this AiPERF execution and provide an executive summary, "
+        "key performance findings, regressions, anomalies, correlated "
+        "bottlenecks, historical evidence, release risk, confidence, "
+        "evidence gaps, and concrete recommended actions."
+    )
+        question_source = "default-analysis"
+    else:
+        user_question = user_question.strip()
+        question_source = "user"
+
+    print(f"QUESTION SOURCE      : {question_source}")
+    print(f"QUESTION LENGTH      : {len(user_question)} characters")
 
     try:
 
@@ -502,7 +601,19 @@ def generate_ai_advice(user_question=None, requested_run_id=None):
             print("GENERATING EMBEDDINGS")
             print("===================================\n")
 
-            create_embedding(findings_context)
+            embedding_text = package_to_text(embedding_source)
+            embedding_vector = create_knowledge_embedding(
+                embedding_text,
+                api_url=EMBEDDING_API_URL,
+                api_key=EMBEDDING_API_KEY,
+                model=EMBEDDING_MODEL,
+            )
+            if embedding_vector:
+                print("EMBEDDING STATUS      : SUCCESS")
+                print(f"EMBEDDING DIMENSIONS  : {len(embedding_vector)}")
+                print(f"EMBEDDING INPUT SIZE  : {len(embedding_text)} characters")
+            else:
+                print("EMBEDDING STATUS      : SKIPPED")
 
         else:
 
@@ -626,9 +737,23 @@ USER MESSAGE:
 Provide only the concise response.
 """
 
-    print("\nCalling AI Engine...\n")
+    request_id = build_request_id(run_id, user_question)
+    print(f"REQUEST ID           : {request_id}")
 
-    response_text = call_gpt(prompt)
+    existing_response = None
+    if not FORCE_GPT_REFRESH:
+        existing_response = get_existing_ai_response(client, request_id)
+
+    if existing_response:
+        print("DUPLICATE CHECK      : EXISTING RESPONSE FOUND")
+        print("GPT INVOCATION       : SKIPPED")
+        print("INFLUXDB WRITE       : SKIPPED")
+        response_text = existing_response
+    else:
+        print("DUPLICATE CHECK      : CLEAR")
+        print("\nCalling AI Engine...\n")
+        response_text = call_gpt(prompt)
+        print("GPT INVOCATION       : EXECUTED")
 
     print("\n===================================")
     print("AI RESPONSE")
@@ -637,36 +762,18 @@ Provide only the concise response.
     print_console(response_text)
 
     try:
-
-        json_body = [
-
-            {
-                "measurement": "aiperf_ai_insights",
-
-                "tags": {
-                    "run_id": run_id,
-                    "insight_type": "gpt_release_advisor"
-                },
-
-                "fields": {
-                    "question": str(user_question),
-                    "insight_text": str(response_text)
-                }
-            }
-
-        ]
-
-        client.write_points(json_body)
-
-        print(
-            "\nGPT RESPONSE WRITTEN TO INFLUXDB\n"
-        )
-
+        if not existing_response:
+            persist_ai_response(
+                client,
+                run_id,
+                request_id,
+                user_question,
+                response_text,
+            )
+            print("INFLUXDB WRITE       : SUCCESS")
     except Exception as ex:
-
-        print(
-            f"Unable to write GPT response: {str(ex)}"
-        )
+        print(f"INFLUXDB WRITE       : FAILED - {str(ex)}")
+        raise
     finally:
         client.close()
 
