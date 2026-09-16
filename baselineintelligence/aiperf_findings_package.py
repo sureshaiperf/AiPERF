@@ -703,7 +703,19 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
 
 def persist_findings_package(package: Mapping[str, Any]) -> None:
     run_id = _safe_run_id(package.get("run_id"))
-    findings_json = json.dumps(package, ensure_ascii=False, indent=2, default=str)
+    findings_json = json.dumps(
+        package,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+        default=str,
+    )
+    validated_package = json.loads(findings_json)
+    if not isinstance(validated_package, dict):
+        raise TypeError("Serialized findings package must have a JSON object root")
+    if validated_package.get("run_id") != run_id:
+        raise ValueError("Serialized findings package RUN_ID validation failed")
+
     point = {
         "measurement": MEASUREMENT_NAME,
         "tags": {
