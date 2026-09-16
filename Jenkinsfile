@@ -66,19 +66,19 @@ pipeline {
             steps {
                 bat '''
                 @echo off
-                if not exist "%JAVA_HOME%\bin\java.exe" exit /b 1
-                if not exist "%JMETER_HOME%\bin\jmeter.bat" exit /b 1
+                if not exist "%JAVA_HOME%\\bin\\java.exe" exit /b 1
+                if not exist "%JMETER_HOME%\\bin\\jmeter.bat" exit /b 1
                 if not exist "%PYTHON%" exit /b 1
-                if not exist "%WORKSPACE%\%JMX_FILE%" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\actuator_metrics_collector.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\transaction_service_mapping.json" exit /b 1
-                set "PATH=%JAVA_HOME%\bin;%PATH%"
+                if not exist "%WORKSPACE%\\%JMX_FILE%" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\transaction_service_mapping.json" exit /b 1
+                set "PATH=%JAVA_HOME%\\bin;%PATH%"
                 java -version
-                call "%JMETER_HOME%\bin\jmeter.bat" -v
+                call "%JMETER_HOME%\\bin\\jmeter.bat" -v
                 "%PYTHON%" --version
-                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\actuator_metrics_collector.py"
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py"
                 if errorlevel 1 exit /b 1
-                "%PYTHON%" -c "import json; json.load(open(r'%INTELLIGENCE_DIR%\transaction_service_mapping.json', encoding='utf-8')); print('Mapping JSON valid')"
+                "%PYTHON%" -c "import json; json.load(open(r'%INTELLIGENCE_DIR%\\transaction_service_mapping.json', encoding='utf-8')); print('Mapping JSON valid')"
                 if errorlevel 1 exit /b 1
                 '''
             }
@@ -114,14 +114,14 @@ pipeline {
                 timeout(time: 10, unit: 'MINUTES') {
                     bat '''
                     @echo off
-                    set "PATH=%JAVA_HOME%\bin;%PATH%"
+                    set "PATH=%JAVA_HOME%\\bin;%PATH%"
                     cd /d "%WORKSPACE%"
-                    call "%JMETER_HOME%\bin\jmeter.bat" ^
+                    call "%JMETER_HOME%\\bin\\jmeter.bat" ^
                       -n ^
-                      -t "%WORKSPACE%\%JMX_FILE%" ^
-                      -l "%WORKSPACE%\%JTL_FILE%" ^
+                      -t "%WORKSPACE%\\%JMX_FILE%" ^
+                      -l "%WORKSPACE%\\%JTL_FILE%" ^
                       -e ^
-                      -o "%WORKSPACE%\%JMETER_REPORT_DIR%" ^
+                      -o "%WORKSPACE%\\%JMETER_REPORT_DIR%" ^
                       -JAIPERF_PROTOCOL=%AIPERF_PROTOCOL% ^
                       -JAIPERF_HOST=%AIPERF_HOST% ^
                       -JAIPERF_PORT=%AIPERF_PORT% ^
@@ -132,8 +132,8 @@ pipeline {
                       -JRUN_ID=%RUN_ID% ^
                       -Jjmeterengine.force.system.exit=true
                     if errorlevel 1 exit /b 1
-                    if not exist "%WORKSPACE%\%JTL_FILE%" exit /b 1
-                    if not exist "%WORKSPACE%\%JMETER_REPORT_DIR%\index.html" exit /b 1
+                    if not exist "%WORKSPACE%\\%JTL_FILE%" exit /b 1
+                    if not exist "%WORKSPACE%\\%JMETER_REPORT_DIR%\\index.html" exit /b 1
                     '''
                 }
             }
@@ -155,7 +155,7 @@ pipeline {
                 cd /d "%INTELLIGENCE_DIR%"
                 set "AIPERF_SERVICE_PHASE=after"
                 set "AIPERF_FAIL_ON_MISSING_SERVICE_TRAFFIC=true"
-                set "JTL_PATH=%WORKSPACE%\%JTL_FILE%"
+                set "JTL_PATH=%WORKSPACE%\\%JTL_FILE%"
                 "%PYTHON%" actuator_metrics_collector.py
                 if errorlevel 1 exit /b 1
                 "%PYTHON%" transaction_history_writer.py
@@ -204,8 +204,8 @@ pipeline {
         stage('Generate Comparison Report') {
             steps {
                 bat '''
-                set "AIPERF_REPORT_DIR=%WORKSPACE%\reports"
-                "%PYTHON%" "%INTELLIGENCE_DIR%\aiperf_comparison_report.py"
+                set "AIPERF_REPORT_DIR=%WORKSPACE%\\reports"
+                "%PYTHON%" "%INTELLIGENCE_DIR%\\aiperf_comparison_report.py"
                 if errorlevel 1 exit /b 1
                 '''
             }
