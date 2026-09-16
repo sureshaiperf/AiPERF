@@ -1,0 +1,8 @@
+python-dotenv
+influxdb
+influxdb-client
+numpy
+pandas
+requests
+scikit-learn
+streamlit

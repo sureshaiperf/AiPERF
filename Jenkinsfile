@@ -33,6 +33,21 @@ pipeline {
             }
         }
 
+        stage('Setup Python Environment') {
+            steps {
+                bat '''
+                cd /d "%INTELLIGENCE_DIR%"
+                if not exist .venv (
+                    "%SYSTEM_PYTHON%" -m venv .venv
+                )
+                "%PYTHON%" -m pip install --quiet --upgrade pip
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m pip install --quiet -r requirements.txt
+                if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
         stage('Capture Service Baseline') {
             steps {
                 bat '''
