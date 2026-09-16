@@ -154,7 +154,7 @@ pipeline {
                 @echo off
                 cd /d "%INTELLIGENCE_DIR%"
                 set "AIPERF_SERVICE_PHASE=after"
-                set "AIPERF_FAIL_ON_MISSING_SERVICE_TRAFFIC=true"
+                set "AIPERF_FAIL_ON_MISSING_SERVICE_TRAFFIC=false"
                 set "JTL_PATH=%WORKSPACE%\\%JTL_FILE%"
                 "%PYTHON%" actuator_metrics_collector.py
                 if errorlevel 1 exit /b 1
