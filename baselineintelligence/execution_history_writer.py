@@ -55,14 +55,14 @@ def get_service_metrics(run_id, service_name):
 
     if points:
         return {
-            "heap_pct": points[0].get("heap_pct", 0),
-            "active_requests": points[0].get("active_requests", 0),
-            "executor_active": points[0].get("executor_active", 0),
-            "avg_response_time_ms": points[0].get("avg_response_time_ms", 0),
-            "request_count": points[0].get("request_count", 0),
+            "heap_pct": points[0].get("heap_pct", 0) or 0,
+            "active_requests": points[0].get("active_requests", 0) or 0,
+            "executor_active": points[0].get("executor_active", 0) or 0,
+            "avg_response_time_ms": points[0].get("avg_response_time_ms", 0) or 0,
+            "request_count": points[0].get("request_count", 0) or 0,
             "request_count_available": points[0].get(
                 "request_count_available", 0
-            ),
+            ) or 0,
         }
 
     return {
