@@ -238,15 +238,18 @@ pipeline {
         }
 
         stage('Release Gate') {
-            steps {
-                bat '''
-                cd /d "%INTELLIGENCE_DIR%"
-                "%PYTHON%" release_gate.py
-                if errorlevel 1 exit /b 1
-                '''
-            }
-        }
-
+    steps {
+        catchError(
+            buildResult: 'UNSTABLE',
+            stageResult: 'FAILURE',
+            message: 'AiPERF release gate returned a non-proceed decision'
+        ) {
+            bat '''
+            cd /d "%INTELLIGENCE_DIR%"
+            "%PYTHON%" release_gate.py
+            if errorlevel 1 exit /b 1
+            '''
+        
         stage('Generate AI Reports') {
             steps {
                 bat '''
