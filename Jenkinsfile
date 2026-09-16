@@ -2,10 +2,13 @@ pipeline {
     agent any
 
     environment {
-        JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.19.10-hotspot'
-        JMETER_HOME = 'C:\\jmeter\\apache-jmeter-5.6.3'
-        PYTHON = 'C:\\Users\\Suresh.Pittala\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        INTELLIGENCE_DIR = 'C:\\practice\\AiPERF\\baselineintelligence'
+        // JAVA_HOME and JMETER_HOME are machine-specific tool installs; configure
+        // them as Jenkins global environment variables on each controller/agent
+        // instead of hardcoding a path here (keeps this file portable across dev
+        // machines). INTELLIGENCE_DIR and PYTHON are workspace-relative so they
+        // work for any checkout location.
+        INTELLIGENCE_DIR = "${WORKSPACE}\\baselineintelligence"
+        PYTHON = "${WORKSPACE}\\baselineintelligence\\.venv\\Scripts\\python.exe"
     }
 
     stages {
