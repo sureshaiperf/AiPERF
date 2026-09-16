@@ -289,71 +289,64 @@ pipeline {
         }
 
         stage('JMeter Execution') {
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    bat '''
-                    @echo off
+    steps {
+        timeout(time: 10, unit: 'MINUTES') {
+            bat '''
+            @echo off
 
-                    set "PATH=%JAVA_HOME%\\bin;%PATH%"
+            set "PATH=%JAVA_HOME%\\bin;%PATH%"
 
-                    echo ============================================
-                    echo Running AiPERF JMeter workload
-                    echo ============================================
-                    echo RUN_ID       : %RUN_ID%
-                    echo JMX_FILE     : %WORKSPACE%\\%JMX_FILE%
-                    echo USERS        : %AIPERF_USERS%
-                    echo RAMP_SECONDS : %AIPERF_RAMP_SECONDS%
-                    echo RAMP_STEPS   : %AIPERF_RAMP_STEPS%
-                    echo HOLD_SECONDS : %AIPERF_HOLD_SECONDS%
-                    echo TARGET       : %AIPERF_PROTOCOL%://%AIPERF_HOST%:%AIPERF_PORT%
-                    echo ============================================
+            echo ============================================
+            echo Running AiPERF JMeter workload
+            echo ============================================
+            echo RUN_ID       : %RUN_ID%
+            echo JMX_FILE     : %WORKSPACE%\\%JMX_FILE%
+            echo USERS        : %AIPERF_USERS%
+            echo RAMP_SECONDS : %AIPERF_RAMP_SECONDS%
+            echo RAMP_STEPS   : %AIPERF_RAMP_STEPS%
+            echo HOLD_SECONDS : %AIPERF_HOLD_SECONDS%
+            echo TARGET       : %AIPERF_PROTOCOL%://%AIPERF_HOST%:%AIPERF_PORT%
+            echo ============================================
 
-                    cd /d "%WORKSPACE%"
-                    if errorlevel 1 exit /b 1
+            cd /d "%WORKSPACE%"
+            if errorlevel 1 exit /b 1
 
-                    call "%JMETER_HOME%\\bin\\jmeter.bat" ^
-                      -n ^
-                      -t "%JMX_FILE%" ^
-                      -l "%JTL_FILE%" ^
-                      -e ^
-                      -o "%JMETER_REPORT_DIR%" ^
-                      -JAIPERF_PROTOCOL=%AIPERF_PROTOCOL% ^
-                      -JAIPERF_HOST=%AIPERF_HOST% ^
-                      -JAIPERF_PORT=%AIPERF_PORT% ^
-                      -JAIPERF_USERS=%AIPERF_USERS% ^
-                      -JAIPERF_RAMP_SECONDS=%AIPERF_RAMP_SECONDS% ^
-                      -JAIPERF_RAMP_STEPS=%AIPERF_RAMP_STEPS% ^
-                      -JAIPERF_HOLD_SECONDS=%AIPERF_HOLD_SECONDS% ^
-                      -JRUN_ID=%RUN_ID% ^
-                      -Jjmeterengine.force.system.exit=true
+            call "%JMETER_HOME%\\bin\\jmeter.bat" ^
+              -n ^
+              -t "%WORKSPACE%\\%JMX_FILE%" ^
+              -l "%WORKSPACE%\\%JTL_FILE%" ^
+              -e ^
+              -o "%WORKSPACE%\\%JMETER_REPORT_DIR%" ^
+              -JAIPERF_PROTOCOL=%AIPERF_PROTOCOL% ^
+              -JAIPERF_HOST=%AIPERF_HOST% ^
+              -JAIPERF_PORT=%AIPERF_PORT% ^
+              -JAIPERF_USERS=%AIPERF_USERS% ^
+              -JAIPERF_RAMP_SECONDS=%AIPERF_RAMP_SECONDS% ^
+              -JAIPERF_RAMP_STEPS=%AIPERF_RAMP_STEPS% ^
+              -JAIPERF_HOLD_SECONDS=%AIPERF_HOLD_SECONDS% ^
+              -JRUN_ID=%RUN_ID% ^
+              -Jjmeterengine.force.system.exit=true
 
-                    if errorlevel 1 (
-                        echo ERROR: JMeter execution failed.
-                        exit /b 1
-                    )
+            if errorlevel 1 (
+                echo ERROR: JMeter execution failed.
+                exit /b 1
+            )
 
-                    if not exist "%JTL_FILE%" (
-                        echo ERROR: JMeter result file was not generated.
-                        exit /b 1
-                    )
+            if not exist "%WORKSPACE%\\%JTL_FILE%" (
+                echo ERROR: JMeter result file was not generated.
+                exit /b 1
+            )
 
-                    for %%A in ("%JTL_FILE%") do (
-                        if %%~zA EQU 0 (
-                            echo ERROR: JMeter result file is empty.
-                            exit /b 1
-                        )
-                    )
+            if not exist "%WORKSPACE%\\%JMETER_REPORT_DIR%\\index.html" (
+                echo ERROR: JMeter HTML report was not generated.
+                exit /b 1
+            )
 
-                    if not exist "%JMETER_REPORT_DIR%\\index.html" (
-                        echo ERROR: JMeter HTML report was not generated.
-                        exit /b 1
-                    )
-
-                    echo JMeter execution completed successfully.
-                    '''
-                }
-            }
+            echo JMeter execution completed successfully.
+            '''
         }
+    }
+}
 
         stage('Capture Run End') {
             steps {
