@@ -86,18 +86,55 @@ def _clean_history(values: list[float]) -> list[float]:
 
 
 def _semantic_version(row: Mapping[str, Any]) -> int:
-    """Return execution-history throughput semantic version.
+    """Return the throughput semantic version for one execution-history row.
 
     Version 1 means the legacy ``throughput`` field contains total samples.
     Version 2 means throughput is a rate in requests per second.
+
+    New producers must write ``throughput_semantic_version=2`` and ideally
+    ``throughput_rps``. Transitional rows are classified using the invariant
+    ``throughput ~= sample_count / duration_seconds``. Magnitude alone is
+    never used to infer metric semantics.
     """
     explicit = _integer(row.get("throughput_semantic_version"), 0)
     if explicit >= 2:
         return 2
-    if _as_number(row.get("throughput_rps")) is not None:
-        return 2
-    return 1
 
+    throughput_rps = _as_number(row.get("throughput_rps"))
+    if throughput_rps is not None and throughput_rps >= 0:
+        return 2
+
+    throughput = _as_number(row.get("throughput"))
+    sample_count = _as_number(
+        row.get("sample_count")
+        if row.get("sample_count") is not None
+        else row.get("samples")
+    )
+    duration_seconds = None
+    for field in (
+        "test_duration",
+        "duration_seconds",
+        "test_duration_seconds",
+        "jtl_sample_span_seconds",
+    ):
+        candidate = _as_number(row.get(field))
+        if candidate is not None and candidate > 0:
+            duration_seconds = candidate
+            break
+
+    if (
+        throughput is not None
+        and throughput >= 0
+        and sample_count is not None
+        and sample_count >= 0
+        and duration_seconds is not None
+    ):
+        expected_rps = sample_count / duration_seconds
+        tolerance = max(0.5, expected_rps * 0.03)
+        if abs(throughput - expected_rps) <= tolerance:
+            return 2
+
+    return 1
 
 def _metric_value(row: Mapping[str, Any], metric: str) -> float | None:
     """Resolve one metric using its authoritative semantic contract."""
