@@ -79,6 +79,14 @@ MEASUREMENT_NAME = "aiperf_findings_package"
 FINDINGS_PACKAGE_VERSION = "2.0"
 MAX_TOP_VARIANCES = int(os.getenv("AIPERF_MAX_TOP_VARIANCES", "10"))
 MAX_PERSISTED_ITEMS = int(os.getenv("AIPERF_MAX_PERSISTED_ITEMS", "100"))
+RESOURCE_PRESSURE_THRESHOLD_PCT = float(
+    os.getenv("AIPERF_RESOURCE_PRESSURE_THRESHOLD_PCT", "80.0")
+)
+RESOURCE_METRICS = {
+    "cpu", "cpu_pct", "system_cpu", "process_cpu", "heap", "heap_pct",
+    "jvm_memory", "jvm_memory_pct", "memory_pct", "gc", "gc_overhead",
+    "gc_pct", "threads", "jvm_threads", "executor_active",
+}
 
 client: Any = None
 
@@ -267,17 +275,40 @@ def build_summary(top_variances: Iterable[Mapping[str, Any]], anomaly_summary: M
     records = [dict(item) for item in top_variances]
     if not records:
         return "No performance variance records were found for the selected run."
-    regressions = [item for item in records if _number(item.get("variance_pct")) > 0]
+    regressions = [item for item in records if _is_actionable_regression(item)]
     improvements = [item for item in records if _number(item.get("variance_pct")) < 0]
-    largest = max(records, key=lambda item: abs(_number(item.get("variance_pct"))))
-    variance = _number(largest.get("variance_pct"))
-    direction = "regression" if variance > 0 else "improvement"
-    summary = (
-        f"Analyzed {len(records)} top variance(s): {len(regressions)} regression(s) "
-        f"and {len(improvements)} improvement(s). The largest {direction} was "
-        f"{_text(largest.get('entity_name'), 'UNKNOWN')} / "
-        f"{_text(largest.get('metric'), 'UNKNOWN')} at {variance:.2f}%."
-    )
+    resource_observations = [
+        item for item in records
+        if _number(item.get("variance_pct")) > 0
+        and _text(item.get("entity_type")).lower() == "service"
+        and _is_resource_metric(item.get("metric"))
+        and not _is_actionable_regression(item)
+    ]
+    if regressions:
+        largest = max(regressions, key=lambda item: _number(item.get("variance_pct")))
+        variance = _number(largest.get("variance_pct"))
+        summary = (
+            f"Analyzed {len(records)} top variance(s): {len(regressions)} actionable "
+            f"regression(s), {len(improvements)} improvement(s), and "
+            f"{len(resource_observations)} low-utilization resource observation(s). "
+            f"The largest actionable regression was "
+            f"{_text(largest.get('entity_name'), 'UNKNOWN')} / "
+            f"{_text(largest.get('metric'), 'UNKNOWN')} at {variance:.2f}%."
+        )
+    else:
+        largest = min(improvements, key=lambda item: _number(item.get("variance_pct"))) if improvements else None
+        summary = (
+            f"Analyzed {len(records)} top variance(s): 0 actionable regressions, "
+            f"{len(improvements)} improvement(s), and "
+            f"{len(resource_observations)} low-utilization resource observation(s)."
+        )
+        if largest:
+            summary += (
+                f" The largest improvement was "
+                f"{_text(largest.get('entity_name'), 'UNKNOWN')} / "
+                f"{_text(largest.get('metric'), 'UNKNOWN')} at "
+                f"{_number(largest.get('variance_pct')):.2f}%."
+            )
     if anomaly_summary.get("anomaly_count"):
         summary += " " + _text(anomaly_summary.get("message"))
     elif anomaly_summary.get("status") == "NORMAL":
@@ -285,8 +316,25 @@ def build_summary(top_variances: Iterable[Mapping[str, Any]], anomaly_summary: M
     return summary
 
 
+def _is_resource_metric(metric: Any) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", _text(metric).lower()).strip("_")
+    return normalized in RESOURCE_METRICS
+
+
+def _is_actionable_regression(item: Mapping[str, Any]) -> bool:
+    variance = _number(item.get("variance_pct"))
+    if variance <= 0:
+        return False
+    if _text(item.get("entity_type")).lower() != "service":
+        return True
+    if not _is_resource_metric(item.get("metric")):
+        return True
+    current_value = _number(item.get("current_value"))
+    return current_value >= RESOURCE_PRESSURE_THRESHOLD_PCT
+
+
 def get_top_regressions(top_variances: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    records = [dict(item) for item in top_variances if _number(item.get("variance_pct")) > 0]
+    records = [dict(item) for item in top_variances if _is_actionable_regression(item)]
     records.sort(key=lambda item: _number(item.get("variance_pct")), reverse=True)
     return records[:5]
 
@@ -531,7 +579,11 @@ def generate_recommendations(
             )
     if anomaly_summary.get("anomaly_count"):
         recommendations.append("Investigate anomalous metrics: " + _text(anomaly_summary.get("message")))
-    if correlation_summary.get("evidence_gaps"):
+    if classification == "IMPROVEMENT_OBSERVED":
+        recommendations.append(
+            "Continue controlled-run observation and validate whether the improvement is repeatable."
+        )
+    elif correlation_summary.get("evidence_gaps"):
         recommendations.append(
             "Collect distributed traces, database timing and downstream dependency latency to increase causal confidence."
         )
