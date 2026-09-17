@@ -48,6 +48,23 @@ pipeline {
             }
         }
 
+        stage('Load Local Credentials') {
+            steps {
+                bat '''
+                if defined LOCAL_ENV_SOURCE (
+                    if exist "%LOCAL_ENV_SOURCE%" (
+                        copy /Y "%LOCAL_ENV_SOURCE%" "%INTELLIGENCE_DIR%\\.env" >nul
+                        echo Loaded local .env from %LOCAL_ENV_SOURCE%
+                    ) else (
+                        echo No .env found at %LOCAL_ENV_SOURCE% -- Generate AI Reports will fail later
+                    )
+                ) else (
+                    echo LOCAL_ENV_SOURCE not configured on this Jenkins instance
+                )
+                '''
+            }
+        }
+
         stage('Capture Service Baseline') {
             steps {
                 bat '''
