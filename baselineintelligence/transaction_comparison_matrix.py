@@ -46,9 +46,17 @@ if txn_df.empty:
 # IDENTIFY LATEST 2 RUNS
 # =====================================================
 
-run_ids = sorted(
-    txn_df["run_id"].unique()
+# Order runs by when they actually happened (InfluxDB point time), not by
+# sorting the run_id string -- "RUN_10_..." sorts before "RUN_9_..." as text,
+# which silently broke "prior run" lookups once build numbers reached double
+# digits.
+run_order = (
+    txn_df.assign(time=pd.to_datetime(txn_df["time"]))
+    .groupby("run_id")["time"]
+    .min()
+    .sort_values()
 )
+run_ids = run_order.index.tolist()
 
 if len(run_ids) < 2:
     print("Minimum 2 runs required.")
@@ -57,8 +65,14 @@ if len(run_ids) < 2:
 current_run_id = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_ID")
 if not current_run_id:
     raise ValueError("RUN_ID must be provided as the first CLI argument or environment variable")
-prior_runs = [run_id for run_id in run_ids if str(run_id) < str(current_run_id)]
-if current_run_id not in run_ids or not prior_runs:
+if current_run_id not in run_order.index:
+    print(f"Could not find RUN_ID={current_run_id} and a prior run.")
+    exit(0)
+prior_runs = [
+    run_id for run_id in run_ids
+    if run_order[run_id] < run_order[current_run_id]
+]
+if not prior_runs:
     print(f"Could not find RUN_ID={current_run_id} and a prior run.")
     exit(0)
 comparison_run_id = prior_runs[-1]
