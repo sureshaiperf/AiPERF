@@ -329,20 +329,9 @@ def _normalise_service_rows(
     service_health: Mapping[str, Any] | Iterable[Mapping[str, Any]] | None,
 ) -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
-    for raw in list(variance or []):
-        row = dict(raw)
-        if _entity_type(row) == "service":
-            output.append(
-                {
-                    "service_name": _entity_name(row),
-                    "metric": _metric_name(row),
-                    "variance_pct": _variance(row),
-                    "current_value": _number(row.get("current_value")),
-                    "reference_value": _number(row.get("previous_value")),
-                    "available": True,
-                    "source": "aiperf_variance_ranking",
-                }
-            )
+    # Service comparison evidence is authoritative. Do not import service
+    # variance-ranking rows because they may be independently calculated and
+    # conflict with the run-scoped aiperf_service_comparison measurement.
 
     comparison_pairs = (
         ("avg_rt", "avg_rt_baseline", "avg_rt_current", "avg_rt_variance_pct", True),
@@ -655,21 +644,11 @@ def analyze_correlation(
         if row["variance_pct"] >= DEFAULT_REGRESSION_THRESHOLD_PCT
         and _metric_group(row["metric"]) in {"LATENCY", "ERROR"}
     ]
-    regressions.sort(key=lambda row: abs(row["variance_pct"]), reverse=True)
+    regressions.sort(key=lambda row: row["variance_pct"], reverse=True)
 
+    # A primary transaction must come only from a genuine positive transaction
+    # comparison. Bottleneck output cannot manufacture a transaction regression.
     primary = regressions[0] if regressions else None
-    bottleneck_primary = (bottleneck or {}).get("primary")
-    if primary is None and isinstance(bottleneck_primary, Mapping):
-        entity = _text(bottleneck_primary.get("entity") or bottleneck_primary.get("transaction"))
-        if entity:
-            primary = {
-                "entity": entity,
-                "metric": _normalise(bottleneck_primary.get("metric") or "unknown"),
-                "variance_pct": float(_number(bottleneck_primary.get("variance_pct"), 0.0) or 0.0),
-                "current_value": _number(bottleneck_primary.get("current_value")),
-                "reference_value": _number(bottleneck_primary.get("previous_value")),
-                "source": "aiperf_bottleneck_intelligence",
-            }
 
     mapped_service: str | None = None
     mapping_method = "UNMAPPED"
@@ -682,9 +661,32 @@ def analyze_correlation(
         if mapped_service and _normalise(row["service_name"]) == _normalise(mapped_service)
     ]
 
-    classification, hypothesis_category, hypothesis_statement = _classification(
-        primary, transaction_rows, mapped_rows, anomaly
-    )
+    improvements = [
+        row for row in transaction_rows
+        if row["variance_pct"] < 0
+        and _metric_group(row["metric"]) in {"LATENCY", "ERROR"}
+    ]
+    improvements.sort(key=lambda row: row["variance_pct"])
+    top_improvement = improvements[0] if improvements else None
+
+    if primary is None and top_improvement is not None:
+        classification = "IMPROVEMENT_OBSERVED"
+        hypothesis_category = "NOT_APPLICABLE"
+        hypothesis_statement = (
+            "No qualifying transaction regression was found. The strongest "
+            "transaction signal is an improvement, so causal regression "
+            "attribution is not applicable."
+        )
+    elif primary is None:
+        classification = "NO_TRANSACTION_REGRESSION"
+        hypothesis_category = "NOT_APPLICABLE"
+        hypothesis_statement = (
+            "No qualifying transaction regression was found for causal assessment."
+        )
+    else:
+        classification, hypothesis_category, hypothesis_statement = _classification(
+            primary, transaction_rows, mapped_rows, anomaly
+        )
 
     observed_facts: list[str] = []
     supporting_signals: list[dict[str, Any]] = []
@@ -698,7 +700,9 @@ def analyze_correlation(
             if row is not primary and (row["entity"], row["metric"]) != (primary["entity"], primary["metric"]):
                 observed_facts.append(_format_fact(row))
     else:
-        evidence_gaps.append("No qualifying transaction regression was found.")
+        if top_improvement is not None:
+            observed_facts.append(_format_fact(top_improvement))
+        evidence_gaps.append("No qualifying positive transaction regression was found.")
 
     for row in mapped_rows:
         group = _metric_group(row["metric"])
@@ -730,7 +734,7 @@ def analyze_correlation(
             contradicting_signals.append(signal)
 
     anomaly_agreement = _anomaly_present(anomaly)
-    if anomaly_agreement:
+    if primary is not None and anomaly_agreement:
         supporting_signals.append(
             {
                 "service": mapped_service,
@@ -740,7 +744,7 @@ def analyze_correlation(
                 "statement": "Anomaly detection identified abnormal behaviour for this run.",
             }
         )
-    else:
+    elif primary is not None:
         contradicting_signals.append(
             {
                 "service": mapped_service,
@@ -777,7 +781,9 @@ def analyze_correlation(
         statistical_correlations=statistical_correlations,
     )
 
-    if confidence["level"] == "LOW":
+    if primary is None:
+        hypothesis_status = "NOT_APPLICABLE"
+    elif confidence["level"] == "LOW":
         hypothesis_status = "LOW_CONFIDENCE_HYPOTHESIS"
     else:
         hypothesis_status = "HYPOTHESIS"
@@ -787,7 +793,11 @@ def analyze_correlation(
         or (release or {}).get("reason")
         or "Release impact must be assessed using the observed regression, scope, and evidence confidence."
     )
-    systemic = classification in {"RESOURCE_SATURATION", "ERROR_DRIVEN_DEGRADATION", "THROUGHPUT_PRESSURE"}
+    systemic = primary is not None and classification in {
+        "RESOURCE_SATURATION",
+        "ERROR_DRIVEN_DEGRADATION",
+        "THROUGHPUT_PRESSURE",
+    }
 
     primary_output = None
     if primary:
@@ -898,11 +908,14 @@ def summarize_correlations(result: Mapping[str, Any]) -> dict[str, Any]:
     if primary:
         lead = (
             f"{primary.get('entity', 'UNKNOWN')} {primary.get('metric', 'metric')} "
-            f"regressed by {abs(float(_number(primary.get('variance_pct'), 0.0) or 0.0)):.2f}%"
+            f"regressed by {float(_number(primary.get('variance_pct'), 0.0) or 0.0):.2f}%"
         )
         if primary.get("mapped_service"):
             lead += f" and maps to {primary['mapped_service']}"
         lead += "."
+    elif result.get("classification") == "IMPROVEMENT_OBSERVED":
+        facts = list(result.get("observed_facts") or [])
+        lead = facts[0] if facts else "A transaction improvement was observed."
     else:
         lead = "No qualifying transaction regression was available."
 

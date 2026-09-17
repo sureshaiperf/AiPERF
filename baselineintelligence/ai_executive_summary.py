@@ -12,6 +12,9 @@ INFLUX_DB = os.getenv("INFLUX_DB", "jmeter")
 INFLUX_USER = os.getenv("INFLUX_USER")
 INFLUX_PASSWORD = os.getenv("INFLUX_PASSWORD")
 INFLUX_TIMEOUT_SECONDS = int(os.getenv("INFLUX_TIMEOUT_SECONDS", "30"))
+RESOURCE_PRESSURE_THRESHOLD_PCT = float(
+    os.getenv("AIPERF_RESOURCE_PRESSURE_THRESHOLD_PCT", "80.0")
+)
 
 VARIANCE_MEASUREMENT = "aiperf_variance_ranking"
 SERVICE_COMPARISON_MEASUREMENT = "aiperf_service_comparison"
@@ -22,22 +25,23 @@ SERVICE_METRICS = (
     {
         "metric": "avg_rt",
         "variance_field": "avg_rt_variance_pct",
+        "current_field": "avg_rt_current",
         "comparable_field": "avg_rt_comparable",
+        "requires_pressure_threshold": False,
     },
     {
         "metric": "heap_pct",
         "variance_field": "heap_pct_variance_pct",
+        "current_field": "heap_pct_current",
         "comparable_field": "heap_pct_comparable",
+        "requires_pressure_threshold": True,
     },
     {
         "metric": "gc_overhead",
         "variance_field": "gc_variance_pct",
+        "current_field": "gc_current",
         "comparable_field": "gc_comparable",
-    },
-    {
-        "metric": "request_count",
-        "variance_field": "request_count_variance_pct",
-        "comparable_field": "request_count_comparable",
+        "requires_pressure_threshold": True,
     },
 )
 
@@ -139,6 +143,12 @@ WHERE "current_run_id" = '{safe_run_id}'
             variance = finite_number(row.get(definition["variance_field"]))
             if variance is None or variance <= 0:
                 continue
+
+            current_value = finite_number(row.get(definition["current_field"]))
+            if definition["requires_pressure_threshold"]:
+                if current_value is None or current_value < RESOURCE_PRESSURE_THRESHOLD_PCT:
+                    continue
+
             candidates.append(
                 {
                     "entity_name": service_name,
