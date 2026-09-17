@@ -376,10 +376,58 @@ def calculate_risk(
     }
 
 
+def determine_baseline_status(
+    run_id: str,
+    transaction_impacts: Sequence[Mapping[str, Any]],
+    service_impacts: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    approved_run_id = _text(
+        os.getenv("AIPERF_APPROVED_BASELINE_RUN_ID")
+    )
+    comparison_run_ids = {
+        _text(
+            item.get("comparison_run_id")
+            or item.get("similar_run_id")
+        )
+        for item in [*transaction_impacts, *service_impacts]
+        if _text(
+            item.get("comparison_run_id")
+            or item.get("similar_run_id")
+        )
+    }
+
+    if approved_run_id and approved_run_id in comparison_run_ids:
+        return {
+            "status": "APPROVED",
+            "approved_baseline_run_id": approved_run_id,
+            "comparison_run_ids": sorted(comparison_run_ids),
+            "reason": "The comparison run matches the explicitly approved baseline.",
+        }
+
+    if comparison_run_ids:
+        return {
+            "status": "REFERENCE_ONLY",
+            "approved_baseline_run_id": approved_run_id or None,
+            "comparison_run_ids": sorted(comparison_run_ids),
+            "reason": (
+                "Comparison evidence exists, but no matching approved baseline "
+                "was configured."
+            ),
+        }
+
+    return {
+        "status": "BASELINE_UNAVAILABLE",
+        "approved_baseline_run_id": approved_run_id or None,
+        "comparison_run_ids": [],
+        "reason": "No comparison or approved baseline evidence exists for this run.",
+    }
+
+
 def calculate_release_impact(
     risk: Mapping[str, Any],
     anomaly_summary: Mapping[str, Any],
     service_health: Mapping[str, Mapping[str, Any]],
+    baseline: Mapping[str, Any],
 ) -> dict[str, Any]:
     critical_services = sum(
         _text(details.get("status")).upper() == "CRITICAL"
@@ -390,15 +438,39 @@ def calculate_release_impact(
         or int(anomaly_summary.get("critical_count", 0)) > 0
         or critical_services > 0
     )
+    baseline_status = _text(
+        baseline.get("status"), "BASELINE_UNAVAILABLE"
+    ).upper()
+
     if release_blocked:
         decision = "BLOCK"
         rationale = "Critical performance risk requires remediation before release."
-    elif risk.get("level") in {"HIGH", "MEDIUM"} or int(anomaly_summary.get("warning_count", 0)):
+        decision_type = "PREDICTED_BLOCKING"
+    elif baseline_status != "APPROVED":
+        decision = "OBSERVE"
+        release_blocked = False
+        rationale = (
+            f"{baseline.get('reason', 'Approved baseline evidence is unavailable')} "
+            "The gate remains non-blocking while controlled evidence is collected."
+        )
+        decision_type = f"PREDICTED_{baseline_status}"
+    elif risk.get("level") in {"HIGH", "MEDIUM"} or int(
+        anomaly_summary.get("warning_count", 0)
+    ):
         decision = "CONDITIONAL"
-        rationale = "Release requires review and documented acceptance of the observed performance risk."
+        rationale = (
+            "Release requires review and documented acceptance of the observed "
+            "performance risk against the approved baseline."
+        )
+        decision_type = "PREDICTED_APPROVED_BASELINE"
     else:
         decision = "PROCEED"
-        rationale = "No critical release-blocking performance signals were detected."
+        rationale = (
+            "No critical release-blocking performance signals were detected "
+            "against the approved baseline."
+        )
+        decision_type = "PREDICTED_APPROVED_BASELINE"
+
     return {
         "decision": decision,
         "release_blocked": release_blocked,
@@ -406,7 +478,10 @@ def calculate_release_impact(
         "risk_level": risk.get("level", "UNKNOWN"),
         "anomaly_status": anomaly_summary.get("status", "UNKNOWN"),
         "critical_service_count": critical_services,
-        "decision_type": "PREDICTED",
+        "decision_type": decision_type,
+        "baseline_status": baseline_status,
+        "approved_baseline_run_id": baseline.get("approved_baseline_run_id"),
+        "comparison_run_ids": list(baseline.get("comparison_run_ids") or []),
     }
 
 
@@ -591,7 +666,17 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
     top_regressions = get_top_regressions(top_variances)
     top_improvements = get_top_improvements(top_variances)
     risk = calculate_risk(top_regressions, anomaly_summary)
-    release_impact = calculate_release_impact(risk, anomaly_summary, service_health)
+    baseline = determine_baseline_status(
+        selected_run,
+        transaction_impacts,
+        service_impacts,
+    )
+    release_impact = calculate_release_impact(
+        risk,
+        anomaly_summary,
+        service_health,
+        baseline,
+    )
     bottlenecks, bottleneck_error = _safe_bottleneck(selected_run)
     correlations, correlation_error = _safe_correlation(
         selected_run,
@@ -619,6 +704,7 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
         "risk": risk,
         "release_impact": release_impact,
         "release_decision": release_impact,
+        "baseline": baseline,
         "observed_release_outcome": observed_release_outcome,
         "top_regressions": top_regressions,
         "top_improvements": top_improvements,
@@ -852,6 +938,8 @@ def _print_summary(package: Mapping[str, Any]) -> None:
     print(f"RUN_ID              : {package.get('run_id')}")
     print(f"Risk                : {risk.get('level')} ({risk.get('score')})")
     print(f"Release Decision    : {release.get('decision')}")
+    print(f"Baseline Status     : {release.get('baseline_status')}")
+    print(f"Decision Type       : {release.get('decision_type')}")
     print(f"Anomaly Status      : {anomaly.get('status')}")
     print(f"Correlation Class   : {correlation.get('classification')}")
     print(f"Causal Confidence   : {correlation.get('confidence_level')} ({correlation.get('confidence')})")
