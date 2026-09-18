@@ -16,7 +16,11 @@ pipeline {
 
         INFLUX_HOST = 'localhost'
         INFLUX_PORT = '8086'
+        INFLUX_DATABASE = 'jmeter'
         INFLUX_DB = 'jmeter'
+
+        AIPERF_BASELINE_ID = 'AIPERF_LOCAL_API_V1'
+        AIPERF_APPROVED_BASELINE_RUN_ID = 'RUN_286_20260918_014154'
 
         AIPERF_GATEWAY_URL = 'http://localhost:8090'
         AIPERF_USER_SERVICE_URL = 'http://localhost:8081'
@@ -81,6 +85,11 @@ pipeline {
                 if not exist "%WORKSPACE%\\%JMX_FILE%" exit /b 1
                 if not exist "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py" exit /b 1
                 if not exist "%INTELLIGENCE_DIR%\\transaction_service_mapping.json" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\baseline_selection.py" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\baseline_registry.py" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\transaction_comparison_report.py" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\transaction_comparison_matrix.py" exit /b 1
+                if not exist "%INTELLIGENCE_DIR%\\service_comparison_writer.py" exit /b 1
 
                 set "PATH=%JAVA_HOME%\\bin;%PATH%"
                 java -version
@@ -94,8 +103,31 @@ pipeline {
 
                 "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py"
                 if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\baseline_selection.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\baseline_registry.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\transaction_comparison_report.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\transaction_comparison_matrix.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\service_comparison_writer.py"
+                if errorlevel 1 exit /b 1
 
                 "%PYTHON%" -c "import json; json.load(open(r'%INTELLIGENCE_DIR%\\transaction_service_mapping.json', encoding='utf-8')); print('Mapping JSON valid')"
+                if errorlevel 1 exit /b 1
+                '''
+            }
+        }
+
+        stage('Validate Approved Baseline') {
+            steps {
+                bat '''
+                @echo off
+                cd /d "%INTELLIGENCE_DIR%"
+                if errorlevel 1 exit /b 1
+
+                "%PYTHON%" -c "import os; from influxdb import InfluxDBClient; from baseline_selection import latest_approved_registry, latest_execution; baseline_id=os.environ['AIPERF_BASELINE_ID']; run_id=os.environ['AIPERF_APPROVED_BASELINE_RUN_ID']; client=InfluxDBClient(host=os.environ.get('INFLUX_HOST','localhost'),port=int(os.environ.get('INFLUX_PORT','8086')),username=os.environ.get('INFLUX_USER') or None,password=os.environ.get('INFLUX_PASSWORD') or None,database=os.environ.get('INFLUX_DATABASE',os.environ.get('INFLUX_DB','jmeter')),timeout=int(os.environ.get('INFLUX_TIMEOUT_SECONDS','30'))); client.ping(); registry=latest_approved_registry(client,baseline_id,run_id); execution=latest_execution(client,run_id); assert registry, 'Approved baseline registry unavailable'; assert str(registry.get('status','')).upper() == 'APPROVED', 'Baseline registry status is not APPROVED'; assert str(registry.get('representative_run_id','')) == run_id, 'Baseline registry run mismatch'; assert execution, 'Approved baseline execution history unavailable'; print('APPROVED BASELINE VALIDATED:',baseline_id,run_id); client.close()"
                 if errorlevel 1 exit /b 1
                 '''
             }
