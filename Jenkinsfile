@@ -21,6 +21,7 @@ pipeline {
 
         AIPERF_BASELINE_ID = 'AIPERF_LOCAL_API_V1'
         AIPERF_APPROVED_BASELINE_RUN_ID = 'RUN_286_20260918_014154'
+        AIPERF_TRANSACTION_SERVICE_MAPPING_FILE = 'C:\\practice\\AiPERF\\baselineintelligence\\transaction_service_mapping.json'
 
         AIPERF_GATEWAY_URL = 'http://localhost:8090'
         AIPERF_USER_SERVICE_URL = 'http://localhost:8081'
@@ -84,7 +85,11 @@ pipeline {
                 if not exist "%PYTHON%" exit /b 1
                 if not exist "%WORKSPACE%\\%JMX_FILE%" exit /b 1
                 if not exist "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\transaction_service_mapping.json" exit /b 1
+                if not exist "%AIPERF_TRANSACTION_SERVICE_MAPPING_FILE%" (
+                    echo ERROR: Transaction-service mapping file was not found.
+                    echo Path: %AIPERF_TRANSACTION_SERVICE_MAPPING_FILE%
+                    exit /b 1
+                )
 
                 set "PATH=%JAVA_HOME%\\bin;%PATH%"
                 java -version
@@ -116,8 +121,14 @@ pipeline {
                 if errorlevel 1 exit /b 1
                 "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\aiperf_findings_package.py"
                 if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\correlation_intelligence.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\evidence_orchestrator.py"
+                if errorlevel 1 exit /b 1
 
-                "%PYTHON%" -c "import json; json.load(open(r'%INTELLIGENCE_DIR%\\transaction_service_mapping.json', encoding='utf-8')); print('Mapping JSON valid')"
+                "%PYTHON%" -c "import json,os; path=os.environ['AIPERF_TRANSACTION_SERVICE_MAPPING_FILE']; data=json.load(open(path,encoding='utf-8-sig')); transactions=data.get('transactions'); assert data.get('schema_version'), 'Mapping schema_version missing'; assert data.get('default_entry_service'), 'Mapping default_entry_service missing'; assert isinstance(transactions,dict) and transactions, 'Mapping transactions missing'; assert len(transactions)==6, 'Expected six transaction mappings'; required=('entry_service','target_service','service_path','business_criticality'); missing={name:[key for key in required if not details.get(key)] for name,details in transactions.items()}; missing={name:keys for name,keys in missing.items() if keys}; assert not missing, f'Incomplete mappings: {missing}'; print('TRANSACTION-SERVICE MAPPING VALIDATED:',len(transactions),'mappings')"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -c "import os; from correlation_intelligence import mapping_status; import json; data=json.load(open(os.environ['AIPERF_TRANSACTION_SERVICE_MAPPING_FILE'],encoding='utf-8-sig')); names=list(data['transactions']); result=mapping_status(names); assert result['status']=='AVAILABLE', result; assert result['mapped_transaction_count']==6, result; assert result['unmapped_transaction_count']==0, result; print('CORRELATION MAPPING CONTRACT VALIDATED:',result['mapped_transaction_count'],'mapped,',result['unmapped_transaction_count'],'unmapped')"
                 if errorlevel 1 exit /b 1
                 '''
             }
