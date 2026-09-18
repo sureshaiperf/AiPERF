@@ -128,8 +128,12 @@ pipeline {
 
                 "%PYTHON%" -c "import json,os; path=os.environ['AIPERF_TRANSACTION_SERVICE_MAPPING_FILE']; data=json.load(open(path,encoding='utf-8-sig')); transactions=data.get('transactions'); assert data.get('schema_version'), 'Mapping schema_version missing'; assert data.get('default_entry_service'), 'Mapping default_entry_service missing'; assert isinstance(transactions,dict) and transactions, 'Mapping transactions missing'; assert len(transactions)==6, 'Expected six transaction mappings'; required=('entry_service','target_service','service_path','business_criticality'); missing={name:[key for key in required if not details.get(key)] for name,details in transactions.items()}; missing={name:keys for name,keys in missing.items() if keys}; assert not missing, f'Incomplete mappings: {missing}'; print('TRANSACTION-SERVICE MAPPING VALIDATED:',len(transactions),'mappings')"
                 if errorlevel 1 exit /b 1
-                "%PYTHON%" -c "import os; from correlation_intelligence import mapping_status; import json; data=json.load(open(os.environ['AIPERF_TRANSACTION_SERVICE_MAPPING_FILE'],encoding='utf-8-sig')); names=list(data['transactions']); result=mapping_status(names); assert result['status']=='AVAILABLE', result; assert result['mapped_transaction_count']==6, result; assert result['unmapped_transaction_count']==0, result; print('CORRELATION MAPPING CONTRACT VALIDATED:',result['mapped_transaction_count'],'mapped,',result['unmapped_transaction_count'],'unmapped')"
+                pushd "%INTELLIGENCE_DIR%"
                 if errorlevel 1 exit /b 1
+                "%PYTHON%" -c "import os,json; from correlation_intelligence import mapping_status; data=json.load(open(os.environ['AIPERF_TRANSACTION_SERVICE_MAPPING_FILE'],encoding='utf-8-sig')); names=list(data['transactions']); result=mapping_status(names); assert result['status']=='AVAILABLE', result; assert result['mapped_transaction_count']==6, result; assert result['unmapped_transaction_count']==0, result; print('CORRELATION MAPPING CONTRACT VALIDATED:',result['mapped_transaction_count'],'mapped,',result['unmapped_transaction_count'],'unmapped')"
+                set "MAPPING_VALIDATION_EXIT=%ERRORLEVEL%"
+                popd
+                if not "%MAPPING_VALIDATION_EXIT%"=="0" exit /b %MAPPING_VALIDATION_EXIT%
                 '''
             }
         }
