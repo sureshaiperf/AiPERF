@@ -85,11 +85,6 @@ pipeline {
                 if not exist "%WORKSPACE%\\%JMX_FILE%" exit /b 1
                 if not exist "%INTELLIGENCE_DIR%\\actuator_metrics_collector.py" exit /b 1
                 if not exist "%INTELLIGENCE_DIR%\\transaction_service_mapping.json" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\baseline_selection.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\baseline_registry.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\transaction_comparison_report.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\transaction_comparison_matrix.py" exit /b 1
-                if not exist "%INTELLIGENCE_DIR%\\service_comparison_writer.py" exit /b 1
 
                 set "PATH=%JAVA_HOME%\\bin;%PATH%"
                 java -version
@@ -113,6 +108,14 @@ pipeline {
                 if errorlevel 1 exit /b 1
                 "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\service_comparison_writer.py"
                 if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\anomaly_detection.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\readiness_score.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\bottleneck_intelligence.py"
+                if errorlevel 1 exit /b 1
+                "%PYTHON%" -m py_compile "%INTELLIGENCE_DIR%\\aiperf_findings_package.py"
+                if errorlevel 1 exit /b 1
 
                 "%PYTHON%" -c "import json; json.load(open(r'%INTELLIGENCE_DIR%\\transaction_service_mapping.json', encoding='utf-8')); print('Mapping JSON valid')"
                 if errorlevel 1 exit /b 1
@@ -127,7 +130,7 @@ pipeline {
                 cd /d "%INTELLIGENCE_DIR%"
                 if errorlevel 1 exit /b 1
 
-                "%PYTHON%" -c "import os; from influxdb import InfluxDBClient; from baseline_selection import latest_approved_registry, latest_execution; baseline_id=os.environ['AIPERF_BASELINE_ID']; run_id=os.environ['AIPERF_APPROVED_BASELINE_RUN_ID']; client=InfluxDBClient(host=os.environ.get('INFLUX_HOST','localhost'),port=int(os.environ.get('INFLUX_PORT','8086')),username=os.environ.get('INFLUX_USER') or None,password=os.environ.get('INFLUX_PASSWORD') or None,database=os.environ.get('INFLUX_DATABASE',os.environ.get('INFLUX_DB','jmeter')),timeout=int(os.environ.get('INFLUX_TIMEOUT_SECONDS','30'))); client.ping(); registry=latest_approved_registry(client,baseline_id,run_id); execution=latest_execution(client,run_id); assert registry, 'Approved baseline registry unavailable'; assert str(registry.get('status','')).upper() == 'APPROVED', 'Baseline registry status is not APPROVED'; assert str(registry.get('representative_run_id','')) == run_id, 'Baseline registry run mismatch'; assert execution, 'Approved baseline execution history unavailable'; print('APPROVED BASELINE VALIDATED:',baseline_id,run_id); client.close()"
+                "%PYTHON%" -c "import os; from influxdb import InfluxDBClient; from baseline_selection import latest_approved_registry, latest_execution; baseline_id=os.environ['AIPERF_BASELINE_ID']; run_id=os.environ['AIPERF_APPROVED_BASELINE_RUN_ID']; client=InfluxDBClient(host=os.environ.get('INFLUX_HOST','localhost'),port=int(os.environ.get('INFLUX_PORT','8086')),database=os.environ.get('INFLUX_DATABASE',os.environ.get('INFLUX_DB','jmeter'))); client.ping(); registry=latest_approved_registry(client,baseline_id,run_id); execution=latest_execution(client,run_id); assert registry, 'Approved baseline registry unavailable'; assert str(registry.get('status','')).upper() == 'APPROVED', 'Baseline registry status is not APPROVED'; assert str(registry.get('representative_run_id','')) == run_id, 'Baseline registry run mismatch'; assert execution, 'Approved baseline execution history unavailable'; print('APPROVED BASELINE VALIDATED:',baseline_id,run_id); client.close()"
                 if errorlevel 1 exit /b 1
                 '''
             }
@@ -294,10 +297,10 @@ pipeline {
                 "%PYTHON%" similar_execution.py
                 if errorlevel 1 exit /b 1
 
-                "%PYTHON%" readiness_score.py --run-id "%RUN_ID%"
+                "%PYTHON%" anomaly_detection.py --run-id "%RUN_ID%"
                 if errorlevel 1 exit /b 1
 
-                "%PYTHON%" anomaly_detection.py
+                "%PYTHON%" readiness_score.py --run-id "%RUN_ID%"
                 if errorlevel 1 exit /b 1
 
                 "%PYTHON%" ai_rca_engine.py
