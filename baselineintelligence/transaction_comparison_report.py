@@ -2,6 +2,12 @@ import pandas as pd
 from influxdb import InfluxDBClient
 import os
 import sys
+from baseline_selection import (
+    BaselineSelectionError,
+    delete_current_run_series,
+    select_comparison_run,
+    validate_single_comparison_target,
+)
 
 # =====================================================
 # CONFIG
@@ -70,10 +76,27 @@ prior_runs = [
     run_id for run_id in run_ids
     if run_order[run_id] < run_order[current_run_id]
 ]
-if not prior_runs:
-    print(f"Could not find RUN_ID={current_run_id} and a prior run.")
-    exit(0)
-comparison_run_id = prior_runs[-1]
+try:
+    selection = select_comparison_run(client, current_run_id, prior_runs)
+except BaselineSelectionError as exc:
+    print(f"Baseline Selection Failed: {exc}")
+    client.close()
+    raise SystemExit(2)
+comparison_run_id = selection.comparison_run_id
+print(f"Selection Status : {selection.selection_status}")
+print(f"Selection Mode   : {selection.selection_mode}")
+print(f"Fallback Used    : {str(selection.fallback_used).lower()}")
+
+delete_current_run_series(
+    client,
+    "aiperf_run_comparison",
+    current_run_id,
+)
+
+print(
+    "Existing run-comparison series removed for "
+    f"{current_run_id}"
+)
 
 print(
     f"Comparing "
@@ -317,6 +340,23 @@ if not service_df.empty:
             client.write_points(
                 json_body
             )
+
+validation = validate_single_comparison_target(
+    client,
+    "aiperf_run_comparison",
+    current_run_id,
+    comparison_run_id,
+)
+
+print()
+print("Run comparison validation passed")
+print(
+    f"Validated Records : {validation['record_count']}"
+)
+print(
+    f"Validated Target  : "
+    f"{validation['comparison_run_id']}"
+)
 
 print()
 print("===================================")

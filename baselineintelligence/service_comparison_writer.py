@@ -2,6 +2,10 @@ import math
 import os
 import sys
 from typing import Any, Dict, List, Optional
+from baseline_selection import (
+    delete_current_run_series,
+    validate_single_comparison_target,
+)
 
 from influxdb import InfluxDBClient
 
@@ -346,6 +350,17 @@ def main() -> int:
             )
             return 0
 
+        delete_current_run_series(
+    client,
+    SERVICE_COMPARISON_MEASUREMENT,
+    current_run_id,
+)
+
+        print(
+            "Existing service-comparison series removed for "
+            f"{current_run_id}"
+        )
+
         print()
         print(f"Writing {len(points)} service comparison record(s)...")
 
@@ -355,6 +370,24 @@ def main() -> int:
                 "InfluxDB returned an unsuccessful result while writing "
                 "service comparison records."
             )
+
+        validation = validate_single_comparison_target(
+    client,
+    SERVICE_COMPARISON_MEASUREMENT,
+    current_run_id,
+    comparison_run_id,
+    expected_record_count=len(points),
+)
+
+        print()
+        print("Service comparison validation passed")
+        print(
+            f"Validated Records : {validation['record_count']}"
+        )
+        print(
+            f"Validated Target  : "
+            f"{validation['comparison_run_id']}"
+        )
 
         print()
         print("Service comparison written successfully")

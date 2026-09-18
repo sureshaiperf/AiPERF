@@ -2,6 +2,7 @@ import pandas as pd
 from influxdb import InfluxDBClient
 import os
 import sys
+from baseline_selection import BaselineSelectionError, select_comparison_run
 
 # =====================================================
 # CONFIGURATION
@@ -72,10 +73,16 @@ prior_runs = [
     run_id for run_id in run_ids
     if run_order[run_id] < run_order[current_run_id]
 ]
-if not prior_runs:
-    print(f"Could not find RUN_ID={current_run_id} and a prior run.")
-    exit(0)
-comparison_run_id = prior_runs[-1]
+try:
+    selection = select_comparison_run(client, current_run_id, prior_runs)
+except BaselineSelectionError as exc:
+    print(f"Baseline Selection Failed: {exc}")
+    client.close()
+    raise SystemExit(2)
+comparison_run_id = selection.comparison_run_id
+print(f"Selection Status : {selection.selection_status}")
+print(f"Selection Mode   : {selection.selection_mode}")
+print(f"Fallback Used    : {str(selection.fallback_used).lower()}")
 
 print(
     f"Comparing {current_run_id} "
