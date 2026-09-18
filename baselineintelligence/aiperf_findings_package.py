@@ -235,12 +235,20 @@ def build_anomaly_summary(anomalies: Iterable[Mapping[str, Any]]) -> dict[str, A
             "anomaly_count": 0,
             "critical_count": 0,
             "warning_count": 0,
+            "beneficial_outlier_count": 0,
+            "beneficial_outliers": [],
             "metrics": [],
             "message": "No anomaly detection results were found for this run.",
         }
     detected = [
         item for item in records
         if item.get("is_anomaly") in (1, True, "1", "true", "True")
+        and _text(item.get("direction")).lower() == "degradation"
+    ]
+    beneficial = [
+        item for item in records
+        if item.get("statistical_outlier") in (1, True, "1", "true", "True")
+        and _text(item.get("direction")).lower() == "improvement"
     ]
     critical = sum(_text(item.get("severity")).upper() == "CRITICAL" for item in detected)
     warning = sum(_text(item.get("severity")).upper() == "WARNING" for item in detected)
@@ -266,6 +274,16 @@ def build_anomaly_summary(anomalies: Iterable[Mapping[str, Any]]) -> dict[str, A
         "anomaly_count": len(detected),
         "critical_count": critical,
         "warning_count": warning,
+        "beneficial_outlier_count": len(beneficial),
+        "beneficial_outliers": [
+            {
+                "metric": _text(item.get("metric"), "UNKNOWN"),
+                "severity": "IMPROVEMENT",
+                "deviation_pct": round(_number(item.get("deviation_pct")), 3),
+                "anomaly_score": round(_number(item.get("anomaly_score")), 3),
+            }
+            for item in beneficial
+        ],
         "metrics": metrics,
         "message": message,
     }

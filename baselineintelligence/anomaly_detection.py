@@ -252,6 +252,8 @@ def detect_anomalies(
                     "deviation_pct": 0.0,
                     "anomaly_score": 0.0,
                     "is_anomaly": False,
+                    "statistical_outlier": False,
+                    "release_risk": False,
                     "severity": "NOT_EVALUATED",
                     "direction": "not_evaluated",
                     "scoring_method": "not_evaluated",
@@ -288,6 +290,8 @@ def detect_anomalies(
                     "deviation_pct": 0.0,
                     "anomaly_score": 0.0,
                     "is_anomaly": False,
+                    "statistical_outlier": False,
+                    "release_risk": False,
                     "severity": "NOT_EVALUATED",
                     "direction": "not_evaluated",
                     "scoring_method": "not_evaluated",
@@ -314,13 +318,17 @@ def detect_anomalies(
             if baseline != 0
             else (0.0 if float(current) == 0 else math.inf)
         )
-        is_anomaly = score >= threshold
+        statistical_outlier = score >= threshold
         direction = _metric_direction(metric, float(current), baseline)
+        release_risk = statistical_outlier and direction == "degradation"
+        is_anomaly = release_risk
         severity = (
             "CRITICAL"
-            if is_anomaly and score >= threshold * 2
+            if release_risk and score >= threshold * 2
             else "WARNING"
-            if is_anomaly
+            if release_risk
+            else "IMPROVEMENT"
+            if statistical_outlier and direction == "improvement"
             else "NORMAL"
         )
 
@@ -334,6 +342,8 @@ def detect_anomalies(
                 "deviation_pct": deviation_pct,
                 "anomaly_score": score,
                 "is_anomaly": is_anomaly,
+                "statistical_outlier": statistical_outlier,
+                "release_risk": release_risk,
                 "severity": severity,
                 "direction": direction,
                 "scoring_method": method,
@@ -393,6 +403,8 @@ def to_influx_points(
                         anomaly_score if math.isfinite(anomaly_score) else 999999.0
                     ),
                     "is_anomaly": int(bool(result.get("is_anomaly", False))),
+                    "statistical_outlier": int(bool(result.get("statistical_outlier", result.get("is_anomaly", False)))),
+                    "release_risk": int(bool(result.get("release_risk", result.get("is_anomaly", False)))),
                     "sample_count": int(result.get("sample_count", 0)),
                     "minimum_history": int(result.get("minimum_history", 0)),
                     "incompatible_sample_count": int(
