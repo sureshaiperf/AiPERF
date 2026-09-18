@@ -1,73 +1,72 @@
 {
-    "schema_version": "1.0",
-    "default_entry_service": "gateway",
-    "transactions": {
-      "GET Users API": {
-        "method": "GET",
-        "path": "/users",
-        "entry_service": "gateway",
-        "target_service": "user-service",
-        "service_path": [
-          "gateway",
-          "user-service"
-        ],
-        "business_criticality": "MEDIUM"
-      },
-      "GET User By ID API": {
-        "method": "GET",
-        "path": "/users/{id}",
-        "entry_service": "gateway",
-        "target_service": "user-service",
-        "service_path": [
-          "gateway",
-          "user-service"
-        ],
-        "business_criticality": "MEDIUM"
-      },
-      "GET Products API": {
-        "method": "GET",
-        "path": "/products",
-        "entry_service": "gateway",
-        "target_service": "product-service",
-        "service_path": [
-          "gateway",
-          "product-service"
-        ],
-        "business_criticality": "HIGH"
-      },
-      "GET Product By ID API": {
-        "method": "GET",
-        "path": "/products/{id}",
-        "entry_service": "gateway",
-        "target_service": "product-service",
-        "service_path": [
-          "gateway",
-          "product-service"
-        ],
-        "business_criticality": "HIGH"
-      },
-      "GET Orders API": {
-        "method": "GET",
-        "path": "/orders",
-        "entry_service": "gateway",
-        "target_service": "order-service",
-        "service_path": [
-          "gateway",
-          "order-service"
-        ],
-        "business_criticality": "CRITICAL"
-      },
-      "GET Order By ID API": {
-        "method": "GET",
-        "path": "/orders/{id}",
-        "entry_service": "gateway",
-        "target_service": "order-service",
-        "service_path": [
-          "gateway",
-          "order-service"
-        ],
-        "business_criticality": "CRITICAL"
-      }
+  "schema_version": "1.0",
+  "default_entry_service": "gateway",
+  "transactions": {
+    "GET Users API": {
+      "method": "GET",
+      "path": "/users",
+      "entry_service": "gateway",
+      "target_service": "user-service",
+      "service_path": [
+        "gateway",
+        "user-service"
+      ],
+      "business_criticality": "MEDIUM"
+    },
+    "GET User By ID API": {
+      "method": "GET",
+      "path": "/users/{id}",
+      "entry_service": "gateway",
+      "target_service": "user-service",
+      "service_path": [
+        "gateway",
+        "user-service"
+      ],
+      "business_criticality": "MEDIUM"
+    },
+    "GET Products API": {
+      "method": "GET",
+      "path": "/products",
+      "entry_service": "gateway",
+      "target_service": "product-service",
+      "service_path": [
+        "gateway",
+        "product-service"
+      ],
+      "business_criticality": "HIGH"
+    },
+    "GET Product By ID API": {
+      "method": "GET",
+      "path": "/products/{id}",
+      "entry_service": "gateway",
+      "target_service": "product-service",
+      "service_path": [
+        "gateway",
+        "product-service"
+      ],
+      "business_criticality": "HIGH"
+    },
+    "GET Orders API": {
+      "method": "GET",
+      "path": "/orders",
+      "entry_service": "gateway",
+      "target_service": "order-service",
+      "service_path": [
+        "gateway",
+        "order-service"
+      ],
+      "business_criticality": "CRITICAL"
+    },
+    "GET Order By ID API": {
+      "method": "GET",
+      "path": "/orders/{id}",
+      "entry_service": "gateway",
+      "target_service": "order-service",
+      "service_path": [
+        "gateway",
+        "order-service"
+      ],
+      "business_criticality": "CRITICAL"
     }
   }
-  
+}

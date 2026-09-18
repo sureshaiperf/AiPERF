@@ -624,7 +624,12 @@ def build_evidence_quality(
         "transaction_evidence": "AVAILABLE" if transaction_impacts else "UNAVAILABLE",
         "service_evidence": "AVAILABLE" if service_impacts else "UNAVAILABLE",
         "anomaly_evidence": "AVAILABLE" if anomalies else "UNAVAILABLE",
-        "correlation_evidence": "AVAILABLE" if correlation_summary.get("primary_transaction") else "UNAVAILABLE",
+        "correlation_evidence": "AVAILABLE" if correlation_summary.get("classification") else "UNAVAILABLE",
+        "transaction_service_mapping": (
+            "AVAILABLE"
+            if (correlation_summary.get("mapping") or {}).get("status") == "AVAILABLE"
+            else "UNAVAILABLE"
+        ),
         "similar_executions": "AVAILABLE" if evidence.get("similar_executions") else "UNAVAILABLE",
         "historical_findings": "AVAILABLE" if evidence.get("historical_findings") else "UNAVAILABLE",
         "previous_release_outcomes": "AVAILABLE" if evidence.get("previous_release_outcomes") else "UNAVAILABLE",
@@ -632,6 +637,7 @@ def build_evidence_quality(
     core_keys = (
         "variance_evidence", "transaction_evidence", "service_evidence",
         "anomaly_evidence", "correlation_evidence",
+        "transaction_service_mapping",
     )
     historical_keys = ("similar_executions", "historical_findings", "previous_release_outcomes")
     core_available = sum(status[key] == "AVAILABLE" for key in core_keys)
@@ -784,6 +790,11 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
         "bottleneck_summary": summarize_bottlenecks(bottlenecks),
         "correlation_intelligence": correlations,
         "correlation_summary": correlation_summary,
+        "transaction_service_mapping": dict(
+            correlation_summary.get("mapping")
+            or correlations.get("mapping")
+            or {}
+        ),
         "recommended_actions": recommendations,
         "anomalies": anomalies,
         "top_variances": top_variances,
@@ -805,6 +816,10 @@ def build_findings_package(run_id: str) -> dict[str, Any]:
             "historical_findings": "historical_findings_search",
             "previous_release_outcomes": "aiperf_release_outcome",
             "correlation_intelligence": "aiperf_correlation_intelligence",
+            "transaction_service_mapping": (
+                correlation_summary.get("mapping", {}).get("source")
+                or "transaction_service_mapping.json"
+            ),
         },
         "component_status": {},
         "data_quality": {},

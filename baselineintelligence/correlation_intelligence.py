@@ -22,6 +22,7 @@ import math
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 ENGINE_VERSION = "2.0.0"
@@ -104,23 +105,123 @@ def _safe_run_id(run_id: Any) -> str:
     return value
 
 
-def _read_mapping() -> dict[str, str]:
-    """Load optional mapping from AIPERF_TRANSACTION_SERVICE_MAP_JSON."""
-    mapping = dict(DEFAULT_TRANSACTION_SERVICE_MAP)
-    raw = os.getenv("AIPERF_TRANSACTION_SERVICE_MAP_JSON", "").strip()
-    if not raw:
-        return mapping
+def _mapping_file_path() -> Path:
+    configured = os.getenv("AIPERF_TRANSACTION_SERVICE_MAPPING_FILE", "").strip()
+    return Path(configured).expanduser() if configured else Path(__file__).resolve().with_name("transaction_service_mapping.json")
+
+
+def load_mapping_contract() -> dict[str, Any]:
+    """Load and validate the authoritative transaction-service mapping file."""
+    path = _mapping_file_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"Transaction-service mapping file not found: {path}")
     try:
-        configured = json.loads(raw)
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
-        raise ValueError("AIPERF_TRANSACTION_SERVICE_MAP_JSON is invalid JSON") from exc
-    if not isinstance(configured, dict):
-        raise ValueError("AIPERF_TRANSACTION_SERVICE_MAP_JSON must be a JSON object")
-    for key, value in configured.items():
-        if _text(key) and _text(value):
-            mapping[_normalise(key)] = _text(value)
+        raise ValueError(f"Invalid transaction-service mapping JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Mapping contract root must be an object")
+    transactions = payload.get("transactions")
+    if not isinstance(transactions, dict) or not transactions:
+        raise ValueError("Mapping contract transactions must be a non-empty object")
+    default_entry = _text(payload.get("default_entry_service"), "gateway")
+    normalized = {}
+    for name, raw in transactions.items():
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"Mapping entry must be an object: {name}")
+        target = _text(raw.get("target_service"))
+        if not target:
+            raise ValueError(f"target_service is required: {name}")
+        entry = _text(raw.get("entry_service"), default_entry)
+        path_items = raw.get("service_path") or [entry, target]
+        if not isinstance(path_items, list) or not all(_text(item) for item in path_items):
+            raise ValueError(f"service_path must be a non-empty string list: {name}")
+        normalized[_normalise(name)] = {
+            "transaction": _text(name),
+            "method": _text(raw.get("method")),
+            "path": _text(raw.get("path")),
+            "entry_service": entry,
+            "target_service": target,
+            "service_path": [_text(item) for item in path_items],
+            "business_criticality": _text(raw.get("business_criticality"), "UNSPECIFIED").upper(),
+        }
+    return {
+        "status": "AVAILABLE",
+        "source": str(path),
+        "schema_version": _text(payload.get("schema_version"), "1.0"),
+        "default_entry_service": default_entry,
+        "transactions": normalized,
+    }
+
+
+def mapping_status(transaction_names: Iterable[str] = ()) -> dict[str, Any]:
+    names = list(
+    dict.fromkeys(
+        _text(name)
+        for name in transaction_names
+        if _text(name)
+    )
+)
+    try:
+        contract = load_mapping_contract()
+        mapped = [name for name in names if _normalise(name) in contract["transactions"]]
+        unmapped = [name for name in names if _normalise(name) not in contract["transactions"]]
+        return {
+            "status": "AVAILABLE",
+            "source": contract["source"],
+            "schema_version": contract["schema_version"],
+            "total_contract_mappings": len(contract["transactions"]),
+            "evaluated_transaction_count": len(names),
+            "mapped_transaction_count": len(mapped),
+            "unmapped_transaction_count": len(unmapped),
+            "mapped_transactions": mapped,
+            "unmapped_transactions": unmapped,
+            "default_entry_service": contract["default_entry_service"],
+        }
+    except Exception as exc:
+        return {
+            "status": "UNAVAILABLE",
+            "source": str(_mapping_file_path()),
+            "schema_version": None,
+            "total_contract_mappings": 0,
+            "evaluated_transaction_count": len(names),
+            "mapped_transaction_count": 0,
+            "unmapped_transaction_count": len(names),
+            "mapped_transactions": [],
+            "unmapped_transactions": names,
+            "default_entry_service": None,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _read_mapping() -> dict[str, str]:
+    """Return exact contract mappings plus optional legacy overrides."""
+    mapping = dict(DEFAULT_TRANSACTION_SERVICE_MAP)
+    try:
+        contract = load_mapping_contract()
+        for key, details in contract["transactions"].items():
+            mapping[key] = details["target_service"]
+    except (FileNotFoundError, ValueError):
+        pass
+    raw = os.getenv("AIPERF_TRANSACTION_SERVICE_MAP_JSON", "").strip()
+    if raw:
+        try:
+            configured = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("AIPERF_TRANSACTION_SERVICE_MAP_JSON is invalid JSON") from exc
+        if not isinstance(configured, dict):
+            raise ValueError("AIPERF_TRANSACTION_SERVICE_MAP_JSON must be a JSON object")
+        for key, value in configured.items():
+            if _text(key) and _text(value):
+                mapping[_normalise(key)] = _text(value)
     return mapping
 
+
+def mapping_details(transaction: str) -> dict[str, Any] | None:
+    try:
+        return dict(load_mapping_contract()["transactions"].get(_normalise(transaction)) or {}) or None
+    except (FileNotFoundError, ValueError):
+        return None
 
 def map_transaction_to_service(
     transaction: str,
@@ -652,14 +753,6 @@ def analyze_correlation(
 
     mapped_service: str | None = None
     mapping_method = "UNMAPPED"
-    if primary:
-        mapped_service, mapping_method = map_transaction_to_service(
-            primary["entity"], transaction_service_map
-        )
-    mapped_rows = [
-        row for row in service_rows
-        if mapped_service and _normalise(row["service_name"]) == _normalise(mapped_service)
-    ]
 
     improvements = [
         row for row in transaction_rows
@@ -668,6 +761,20 @@ def analyze_correlation(
     ]
     improvements.sort(key=lambda row: row["variance_pct"])
     top_improvement = improvements[0] if improvements else None
+
+    mapping_subject = primary or top_improvement
+    mapping_overview = mapping_status(row["entity"] for row in transaction_rows)
+    subject_mapping = mapping_details(mapping_subject["entity"]) if mapping_subject else None
+    if mapping_subject:
+        mapped_service, mapping_method = map_transaction_to_service(
+            mapping_subject["entity"], transaction_service_map
+        )
+        if subject_mapping:
+            mapping_method = "EXACT_CONTRACT_MAPPING"
+    mapped_rows = [
+        row for row in service_rows
+        if mapped_service and _normalise(row["service_name"]) == _normalise(mapped_service)
+    ]
 
     if primary is None and top_improvement is not None:
         classification = "IMPROVEMENT_OBSERVED"
@@ -755,9 +862,14 @@ def analyze_correlation(
             }
         )
 
-    if not mapped_service:
-        evidence_gaps.append("Transaction-to-service mapping is unavailable.")
-    elif not mapped_rows:
+    if mapping_overview.get("status") != "AVAILABLE":
+        evidence_gaps.append(
+            "Transaction-to-service mapping contract is unavailable: "
+            + _text(mapping_overview.get("reason"), "unknown reason")
+        )
+    elif mapping_subject and not mapped_service:
+        evidence_gaps.append(f"No mapping entry was found for {mapping_subject['entity']}.")
+    elif primary and not mapped_rows:
         evidence_gaps.append(f"No service comparison or runtime evidence was found for {mapped_service}.")
     if not statistical_correlations:
         evidence_gaps.append("Insufficient aligned time-series samples for statistical correlation.")
@@ -814,6 +926,16 @@ def analyze_correlation(
         "run_id": safe_run_id,
         "generated_time": datetime.now(timezone.utc).isoformat(),
         "primary_transaction": primary_output,
+        "mapping": {
+            **mapping_overview,
+            "subject_transaction": mapping_subject["entity"] if mapping_subject else None,
+            "mapping_method": mapping_method,
+            "entry_service": (subject_mapping or {}).get("entry_service"),
+            "target_service": (subject_mapping or {}).get("target_service", mapped_service),
+            "service_path": (subject_mapping or {}).get("service_path", []),
+            "business_criticality": (subject_mapping or {}).get("business_criticality"),
+            "rca_applicability": "APPLICABLE" if primary else "NOT_APPLICABLE",
+        },
         "classification": classification,
         "systemic_degradation": systemic,
         "observed_facts": _unique_strings(observed_facts),
@@ -855,6 +977,7 @@ def persist_correlation_intelligence(
     hypothesis = result.get("root_cause_hypothesis") or {}
     confidence = result.get("causal_confidence") or {}
     primary = result.get("primary_transaction") or {}
+    mapping = dict(result.get("mapping") or {})
 
     point = {
         "measurement": measurement,
@@ -862,7 +985,8 @@ def persist_correlation_intelligence(
             "run_id": run_id,
             "classification": _text(result.get("classification"), "UNKNOWN"),
             "confidence_level": _text(confidence.get("level"), "LOW"),
-            "mapped_service": _text(primary.get("mapped_service"), "UNMAPPED"),
+            "mapped_service": _text(primary.get("mapped_service") or mapping.get("target_service"), "UNMAPPED"),
+            "mapping_status": _text(mapping.get("status"), "UNAVAILABLE"),
         },
         "fields": {
             "schema_version": _text(result.get("schema_version"), "aiperf-correlation.v2"),
@@ -884,6 +1008,12 @@ def persist_correlation_intelligence(
             "correlations": _json_dumps(result.get("statistical_correlations", [])),
             "confidence_basis_json": _json_dumps(confidence.get("basis", [])),
             "evidence_gaps_json": _json_dumps(result.get("evidence_gaps", [])),
+            "mapping_source": _text(mapping.get("source")),
+            "mapping_method": _text(mapping.get("mapping_method"), "UNMAPPED"),
+            "mapping_target_service": _text(mapping.get("target_service")),
+            "mapping_business_criticality": _text(mapping.get("business_criticality"), "UNSPECIFIED"),
+            "mapping_rca_applicability": _text(mapping.get("rca_applicability"), "NOT_APPLICABLE"),
+            "mapping_json": _json_dumps(mapping),
             "result_json": _json_dumps(dict(result)),
         },
     }
@@ -925,10 +1055,17 @@ def summarize_correlations(result: Mapping[str, Any]) -> dict[str, Any]:
         f"Causal confidence is {confidence.get('level', 'LOW')} "
         f"({float(_number(confidence.get('score'), 0.0) or 0.0):.3f})."
     )
+    mapping = dict(result.get("mapping") or {})
     return {
         "schema_version": result.get("schema_version", "aiperf-correlation.v2"),
         "summary": summary,
         "primary_transaction": primary or None,
+        "mapping": mapping,
+        "mapping_status": mapping.get("status", "UNAVAILABLE"),
+        "mapped_service": mapping.get("target_service"),
+        "business_criticality": mapping.get("business_criticality"),
+        "service_path": list(mapping.get("service_path") or []),
+        "rca_applicability": mapping.get("rca_applicability", "NOT_APPLICABLE"),
         "classification": result.get("classification", "INSUFFICIENT_EVIDENCE"),
         "systemic_degradation": bool(result.get("systemic_degradation", False)),
         "root_cause_hypothesis": hypothesis.get(

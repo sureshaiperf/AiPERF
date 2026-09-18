@@ -71,7 +71,8 @@ def _metric_free_findings(package: dict[str, Any]) -> dict[str, Any]:
     allowed = (
         "run_id", "package_version", "generated_time", "executive_summary",
         "risk", "release_impact", "anomaly_summary", "bottleneck_summary",
-        "correlation_summary", "recommended_actions",
+        "correlation_summary", "transaction_service_mapping",
+        "recommended_actions",
     )
     return {key: package.get(key) for key in allowed if key in package}
 
@@ -121,5 +122,10 @@ def prepare_evidence(client: Any, run_id: str, current_findings: dict[str, Any] 
             "current_findings": "aiperf_findings_package",
             "similar_executions": "aiperf_similar_execution",
             "historical_findings": "historical_findings_search",
+            "transaction_service_mapping": (
+                package.get("transaction_service_mapping", {}).get("source")
+                if isinstance(package, dict)
+                else None
+            ),
         },
     }
