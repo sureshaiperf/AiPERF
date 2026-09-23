@@ -12,7 +12,7 @@ pipeline {
         JAVA_HOME = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.19.10-hotspot'
         JMETER_HOME = 'C:\\jmeter\\apache-jmeter-5.6.3'
         PYTHON = 'C:\\Users\\Suresh.Pittala\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        INTELLIGENCE_DIR = 'C:\\practice\\AiPERF\\baselineintelligence'
+        INTELLIGENCE_DIR = "${WORKSPACE}\\baselineintelligence"
 
         INFLUX_HOST = 'localhost'
         INFLUX_PORT = '8086'
@@ -21,7 +21,7 @@ pipeline {
 
         AIPERF_BASELINE_ID = 'AIPERF_LOCAL_API_V1'
         AIPERF_APPROVED_BASELINE_RUN_ID = 'RUN_286_20260918_014154'
-        AIPERF_TRANSACTION_SERVICE_MAPPING_FILE = 'C:\\practice\\AiPERF\\baselineintelligence\\transaction_service_mapping.json'
+        AIPERF_TRANSACTION_SERVICE_MAPPING_FILE = "${WORKSPACE}\\baselineintelligence\\transaction_service_mapping.json"
 
         AIPERF_GATEWAY_URL = 'http://localhost:8090'
         AIPERF_USER_SERVICE_URL = 'http://localhost:8081'
@@ -41,7 +41,7 @@ pipeline {
         AIPERF_VERIFY_TLS = 'true'
         AIPERF_LOG_LEVEL = 'INFO'
 
-        JMX_FILE = 'API_influx_grafana.jmx'
+        JMX_FILE = 'jmeter\\API_influx_grafana.jmx'
         JTL_FILE = 'logs\\results.jtl'
         JMETER_REPORT_DIR = 'html\\report'
     }
@@ -390,7 +390,7 @@ pipeline {
                 ])
 
                 archiveArtifacts(
-                    artifacts: 'logs/results.jtl,html/report/**,reports/**,API_influx_grafana.jmx',
+                    artifacts: 'logs/results.jtl,html/report/**,reports/**,jmeter/API_influx_grafana.jmx',
                     fingerprint: true,
                     allowEmptyArchive: false
                 )
