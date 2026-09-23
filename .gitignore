@@ -15,4 +15,11 @@ baselineintelligence/.env
 
 # OS
 Thumbs.db
-.DS_Store
+.DS_Store__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.backup_*
+*.bak
+baselineintelligence/influx-backups/
