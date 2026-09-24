@@ -76,6 +76,71 @@ pipeline {
             }
         }
 
+        stage('Provision AiPERF Environment') {
+    steps {
+        withCredentials([
+            file(
+                credentialsId: 'aiperf-env-file',
+                variable: 'AIPERF_ENV_SOURCE'
+            )
+        ]) {
+            bat '''
+            @echo off
+            setlocal EnableExtensions
+
+            echo Provisioning AiPERF environment configuration...
+
+            if not exist "%INTELLIGENCE_DIR%" (
+                echo ERROR: AiPERF intelligence directory does not exist.
+                echo Expected location: %INTELLIGENCE_DIR%
+                exit /b 1
+            )
+
+            if not exist "%AIPERF_ENV_SOURCE%" (
+                echo ERROR: Jenkins Secret File credential was not materialized.
+                echo Verify credential ID: aiperf-env-file
+                exit /b 1
+            )
+
+            copy /Y "%AIPERF_ENV_SOURCE%" "%INTELLIGENCE_DIR%\\.env" >nul
+            if errorlevel 1 (
+                echo ERROR: Failed to provision AiPERF .env file.
+                exit /b 1
+            )
+
+            if not exist "%INTELLIGENCE_DIR%\\.env" (
+                echo ERROR: AiPERF .env file is unavailable after provisioning.
+                exit /b 1
+            )
+
+            echo AiPERF environment file provisioned successfully.
+            endlocal
+            '''
+        }
+
+        bat '''
+        @echo off
+        setlocal EnableExtensions
+
+        cd /d "%INTELLIGENCE_DIR%"
+        if errorlevel 1 (
+            echo ERROR: Unable to enter AiPERF intelligence directory.
+            exit /b 1
+        )
+
+        "%PYTHON%" -c "from pathlib import Path; from dotenv import dotenv_values; env_path=Path(r'%INTELLIGENCE_DIR%')/'.env'; required=['PRIMARY_API_URL','PRIMARY_API_KEY','PRIMARY_MODEL','FAILOVER_API_URL','FAILOVER_API_KEY','FAILOVER_MODEL','EMBEDDING_API_URL','EMBEDDING_API_KEY','EMBEDDING_MODEL','AIPERF_EMBEDDING_DIMENSIONS','AIPERF_EMBEDDING_MAX_CHARS','EMBEDDING_TIMEOUT_SECONDS']; values=dotenv_values(env_path); missing=[name for name in required if not str(values.get(name,'')).strip()]; assert not missing, 'Required AiPERF configuration missing: ' + ', '.join(missing); assert int(values['AIPERF_EMBEDDING_DIMENSIONS']) == 736, 'AIPERF_EMBEDDING_DIMENSIONS must be 736'; assert int(values['AIPERF_EMBEDDING_MAX_CHARS']) > 0, 'AIPERF_EMBEDDING_MAX_CHARS must be greater than zero'; assert int(values['EMBEDDING_TIMEOUT_SECONDS']) > 0, 'EMBEDDING_TIMEOUT_SECONDS must be greater than zero'; print('AIPERF ENVIRONMENT VALIDATED:', len(required), 'required variables available')"
+
+        if errorlevel 1 (
+            echo ERROR: AiPERF environment validation failed.
+            exit /b 1
+        )
+
+        echo AiPERF environment configuration validated successfully.
+        endlocal
+        '''
+    }
+}
+
         stage('Validate Runtime Dependencies') {
             steps {
                 bat '''
@@ -400,13 +465,35 @@ pipeline {
 
     post {
         always {
-            echo "AiPERF final status: ${currentBuild.currentResult}; RUN_ID=${env.RUN_ID ?: 'NOT_GENERATED'}"
-            archiveArtifacts(
-                artifacts: 'logs/**,html/**,reports/**',
-                fingerprint: true,
-                allowEmptyArchive: true
-            )
-        }
+    echo "AiPERF final status: ${currentBuild.currentResult}; RUN_ID=${env.RUN_ID ?: 'NOT_GENERATED'}"
+
+    archiveArtifacts(
+        artifacts: 'logs/**,html/**,reports/**',
+        fingerprint: true,
+        allowEmptyArchive: true
+    )
+
+    bat '''
+    @echo off
+    setlocal EnableExtensions
+
+    set "AIPERF_ENV_FILE=%INTELLIGENCE_DIR%\\.env"
+
+    if exist "%AIPERF_ENV_FILE%" (
+        del /F /Q "%AIPERF_ENV_FILE%"
+
+        if exist "%AIPERF_ENV_FILE%" (
+            echo WARNING: Unable to remove the temporary AiPERF environment file.
+        ) else (
+            echo Temporary AiPERF environment file removed.
+        )
+    ) else (
+        echo No temporary AiPERF environment file found.
+    )
+
+    endlocal
+    '''
+}
 
         success {
             echo 'AiPERF pipeline completed successfully.'
